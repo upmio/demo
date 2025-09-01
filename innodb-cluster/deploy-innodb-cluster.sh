@@ -571,17 +571,7 @@ validate_parameters() {
 		fi
 	fi
 
-	# In non-interactive mode, validate Namespace existence
-	if [[ -n "$NAMESPACE" ]]; then
-		if ! kubectl get namespace "$NAMESPACE" &>/dev/null; then
-			print_error "Namespace does not exist: $NAMESPACE"
-			print_info "Available Namespace list:"
-			kubectl get namespace -o name 2>/dev/null | sed 's/namespace\///g' | while read -r ns; do
-				echo "  - $ns"
-			done
-			exit 1
-		fi
-	fi
+	# Namespace validation removed - Project object will automatically create namespace if it doesn't exist
 
 	print_success "Parameter validation passed"
 }

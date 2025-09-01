@@ -32,7 +32,6 @@ YAML_FILES=(
 # Global variables - set via command line arguments, fallback to interactive input
 STORAGE_CLASS=""
 NAMESPACE=""
-NODEPORT_IP=""
 MYSQL_VERSION=""
 
 # Print functions
@@ -80,16 +79,17 @@ Options:
     --help                          Show this help information
     --namespace <namespace>         Specify deployment namespace
     --storage-class <class>         Specify StorageClass
-    --nodeport-ip <ip>              Specify NodePort IP address
-
     --mysql-version <version>       Specify MySQL version (MySQL Router version will automatically match MySQL version)
 
 Examples:
     $0                                                    # Interactive deployment mode
     $0 --dry-run                                          # Preview mode, display YAML content
-    $0 --namespace cert-manager --storage-class local-path --nodeport-ip 192.168.1.100  # Non-interactive mode
+    $0 --namespace cert-manager --storage-class local-path  # Non-interactive mode
     $0 --mysql-version 8.0.41                            # Specify version
     $0 --help                                             # Show help information
+
+Note:
+    NodePort IP will be automatically detected from the first available Kubernetes node.
 
 EOF
 }
@@ -121,15 +121,6 @@ parse_arguments() {
 				shift 2
 			else
 				print_error "--storage-class requires a value"
-				exit 1
-			fi
-			;;
-		--nodeport-ip)
-			if [[ -n "${2:-}" ]]; then
-				NODEPORT_IP="$2"
-				shift 2
-			else
-				print_error "--nodeport-ip requires a value"
 				exit 1
 			fi
 			;;
@@ -363,6 +354,34 @@ get_node_ips() {
 	echo "$node_ips"
 }
 
+# Auto-detect and set NodePort IP from first available node
+auto_detect_nodeport_ip() {
+	print_info "Auto-detecting NodePort IP from Kubernetes cluster..."
+	
+	local node_ips_str
+	node_ips_str=$(get_node_ips)
+	
+	if [[ -n "$node_ips_str" ]]; then
+		# Get the first available IP
+		local first_ip
+		first_ip=$(echo "$node_ips_str" | head -n 1)
+		
+		if validate_ip_address "$first_ip"; then
+			NODEPORT_IP="$first_ip"
+			print_success "NodePort IP auto-detected: $NODEPORT_IP"
+			return 0
+		fi
+	fi
+	
+	# Fallback to localhost if no valid node IP found
+	print_warning "Unable to detect valid node IP, using localhost as fallback"
+	NODEPORT_IP="127.0.0.1"
+	print_info "NodePort IP set to: $NODEPORT_IP"
+}
+
+# Global variable for NodePort IP
+NODEPORT_IP=""
+
 # Numeric selection menu
 select_from_list() {
 	local title="$1"
@@ -477,9 +496,7 @@ check_required_parameters() {
 		missing_params+=("Namespace")
 	fi
 
-	if [[ -z "$NODEPORT_IP" ]]; then
-		missing_params+=("NodePort IP")
-	fi
+	# NodePort IP will be auto-detected, no need to check
 
 	if [[ ${#missing_params[@]} -eq 0 ]]; then
 		return 0 # All parameters provided
@@ -490,11 +507,7 @@ check_required_parameters() {
 
 # Validate provided parameters
 validate_parameters() {
-	# Validate IP address format (nodeport-ip doesn't need existence check)
-	if [[ -n "$NODEPORT_IP" ]] && ! validate_ip_address "$NODEPORT_IP"; then
-		print_error "Invalid IP address format: $NODEPORT_IP"
-		exit 1
-	fi
+	# NodePort IP will be auto-detected, no need to validate here
 
 	# In non-interactive mode, validate StorageClass existence
 	if [[ -n "$STORAGE_CLASS" ]]; then
@@ -585,23 +598,7 @@ get_user_input() {
 
 	NAMESPACE=$(select_from_list "Select Namespace:" "${ns_array[@]}" "Please enter custom Namespace name" "true")
 
-	# Get NodePort IP
-	local node_ips_str
-	node_ips_str=$(get_node_ips)
-
-	local ip_options=()
-	if [[ -n "$node_ips_str" ]]; then
-		while IFS= read -r line; do
-			[[ -n "$line" ]] && ip_options+=("$line")
-		done <<<"$node_ips_str"
-	fi
-
-	# If no node IPs found, provide a default option
-	if [[ ${#ip_options[@]} -eq 0 ]]; then
-		ip_options=("127.0.0.1")
-	fi
-
-	NODEPORT_IP=$(select_from_list "Select NodePort IP:" "${ip_options[@]}" "Please enter custom IP address" "true" "validate_ip_address")
+	# NodePort IP will be auto-detected, no interactive input needed
 
 	# Select MySQL version
 	if [[ -z "$MYSQL_VERSION" ]]; then
@@ -632,7 +629,7 @@ get_user_input() {
 	print_success "Parameter configuration completed:"
 	print_success "  StorageClass: $STORAGE_CLASS"
 	print_success "  Namespace: $NAMESPACE"
-	print_success "  NodePort IP: $NODEPORT_IP"
+	print_success "  NodePort IP: $NODEPORT_IP (auto-detected)"
 	print_success "  MySQL Version: $MYSQL_VERSION"
 	print_success "  Router Version: $MYSQL_VERSION (automatically matches MySQL version)"
 	echo
@@ -1088,6 +1085,9 @@ main() {
 		check_dependencies
 	fi
 	check_yaml_files
+
+	# Auto-detect NodePort IP
+	auto_detect_nodeport_ip
 
 	# Get user input
 	get_user_input

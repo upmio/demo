@@ -194,7 +194,7 @@ build_mysql_cmd() {
 # Test MySQL connection
 test_mysql_connection() {
     log_info "Testing MySQL connection..."
-    log_dba_info "验证通过deploy-innodb-cluster.sh部署的MySQL服务连接性"
+    log_dba_info "Verifying MySQL service connectivity deployed via deploy-innodb-cluster.sh"
     log_technical "Connection Parameters: Host=$MYSQL_HOST, Port=$MYSQL_PORT, User=$MYSQL_USER"
     
     local test_sql="SELECT 1 as connection_test;"
@@ -223,7 +223,7 @@ test_mysql_connection() {
     else
         log_error "MySQL connection failed"
         log_technical "Connection Error Details: $connection_result"
-        log_dba_info "请检查: 1) MySQL服务是否运行 2) 网络连接 3) 用户权限 4) 防火墙设置"
+        log_dba_info "Please check: 1) MySQL service status 2) Network connectivity 3) User privileges 4) Firewall settings"
         record_test_result "MySQL Connection" "FAIL" "Cannot connect to $MYSQL_HOST:$MYSQL_PORT"
         return 1
     fi
@@ -232,7 +232,7 @@ test_mysql_connection() {
 # Get MySQL server information
 get_server_info() {
     log_info "Retrieving MySQL server information..."
-    log_dba_info "收集MySQL服务器详细技术信息用于DBA分析"
+    log_dba_info "Collecting detailed MySQL server technical information for DBA analysis"
     
     # Basic server information
     local basic_info_sql="SELECT VERSION() as mysql_version, @@hostname as hostname, @@port as port, @@datadir as data_directory;"
@@ -256,7 +256,7 @@ get_server_info() {
         fi
         
         # InnoDB Cluster specific information
-        log_dba_info "检查InnoDB Cluster相关配置"
+        log_dba_info "Checking InnoDB Cluster related configuration"
         local cluster_sql="SELECT @@group_replication_group_name as cluster_group, @@server_uuid as server_uuid, @@group_replication_local_address as local_address;"
         log_sql "Cluster Info Query: $cluster_sql"
         local cluster_info
@@ -286,7 +286,7 @@ get_server_info() {
         record_test_result "Server Information" "PASS" "Retrieved comprehensive server details"
     else
         log_warning "Could not retrieve server information"
-        log_dba_info "服务器信息获取失败，可能权限不足或服务异常"
+        log_dba_info "Failed to retrieve server information, possible insufficient privileges or service anomaly"
         record_test_result "Server Information" "FAIL" "Cannot retrieve server details"
     fi
 }
@@ -300,7 +300,7 @@ test_database_operations() {
     
     # Test 1: Create test database
     log_info "Creating test database '$TEST_DATABASE'..."
-    log_dba_info "验证数据库创建权限和存储引擎功能"
+    log_dba_info "Verifying database creation privileges and storage engine functionality"
     
     local create_db_sql="CREATE DATABASE IF NOT EXISTS $TEST_DATABASE DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
     log_sql "Database Creation: $create_db_sql"
@@ -321,14 +321,14 @@ test_database_operations() {
         record_test_result "Create Database" "PASS" "Database '$TEST_DATABASE' created with proper charset"
     else
         log_error "Failed to create test database"
-        log_dba_info "数据库创建失败，请检查CREATE权限和磁盘空间"
+        log_dba_info "Database creation failed, please check CREATE privileges and disk space"
         record_test_result "Create Database" "FAIL" "Cannot create database '$TEST_DATABASE'"
         return 1
     fi
     
     # Test 2: Create test table
     log_info "Creating test table..."
-    log_dba_info "验证表创建、索引和存储引擎配置"
+    log_dba_info "Verifying table creation, indexing, and storage engine configuration"
     
     local create_table_sql="
         USE $TEST_DATABASE;
@@ -368,7 +368,7 @@ test_database_operations() {
         record_test_result "Create Table" "PASS" "Table 'test_table' created with InnoDB engine"
     else
         log_error "Failed to create test table"
-        log_dba_info "表创建失败，请检查存储引擎支持和表空间配置"
+        log_dba_info "Table creation failed, please check storage engine support and tablespace configuration"
         record_test_result "Create Table" "FAIL" "Cannot create test table"
         cleanup_test_database
         return 1
@@ -376,7 +376,7 @@ test_database_operations() {
     
     # Test 3: Insert test data
     log_info "Inserting test data..."
-    log_dba_info "验证数据插入性能和事务处理能力"
+    log_dba_info "Verifying data insertion performance and transaction processing capability"
     
     local insert_sql="
         USE $TEST_DATABASE;
@@ -415,7 +415,7 @@ test_database_operations() {
         record_test_result "Insert Data" "PASS" "3 records inserted with transaction in ${insert_time}ms"
     else
         log_error "Failed to insert test data"
-        log_dba_info "数据插入失败，请检查表空间、权限和事务日志配置"
+        log_dba_info "Data insertion failed, please check tablespace, privileges, and transaction log configuration"
         record_test_result "Insert Data" "FAIL" "Cannot insert test data"
         cleanup_test_database
         return 1
@@ -423,7 +423,7 @@ test_database_operations() {
     
     # Test 4: Query test data
     log_info "Querying test data..."
-    log_dba_info "验证查询性能和索引使用效率"
+    log_dba_info "Verifying query performance and index usage efficiency"
     
     local select_sql="USE $TEST_DATABASE; SELECT COUNT(*) as record_count FROM test_table;"
     log_sql "Record Count Query: $select_sql"
@@ -459,18 +459,18 @@ test_database_operations() {
             record_test_result "Query Data" "PASS" "Retrieved $record_count records in ${query_time}ms with index analysis"
         else
             log_warning "Data query returned unexpected count: $record_count"
-            log_dba_info "数据计数异常，可能存在数据一致性问题"
+            log_dba_info "Abnormal data count, possible data consistency issues"
             record_test_result "Query Data" "FAIL" "Expected 3 records, got $record_count"
         fi
     else
         log_error "Failed to query test data"
-        log_dba_info "查询失败，请检查表结构和查询权限"
+        log_dba_info "Query failed, please check table structure and query privileges"
         record_test_result "Query Data" "FAIL" "Cannot query test data"
     fi
     
     # Test 5: Update test data
     log_info "Updating test data..."
-    log_dba_info "验证数据更新操作和行锁机制"
+    log_dba_info "Verifying data update operations and row locking mechanism"
     
     local update_sql="USE $TEST_DATABASE; START TRANSACTION; UPDATE test_table SET email = 'updated@example.com' WHERE id = 1; COMMIT;"
     log_sql "Update with Transaction: $update_sql"
@@ -502,13 +502,13 @@ test_database_operations() {
         record_test_result "Update Data" "PASS" "Record updated successfully in ${update_time}ms"
     else
         log_error "Failed to update test data"
-        log_dba_info "数据更新失败，请检查UPDATE权限和行锁状态"
+        log_dba_info "Data update failed, please check UPDATE privileges and row lock status"
         record_test_result "Update Data" "FAIL" "Cannot update test data"
     fi
     
     # Test 6: Delete test data
     log_info "Deleting test data..."
-    log_dba_info "验证数据删除操作和空间回收机制"
+    log_dba_info "Verifying data deletion operations and space reclamation mechanism"
     
     local delete_sql="USE $TEST_DATABASE; START TRANSACTION; DELETE FROM test_table WHERE id = 3; COMMIT;"
     log_sql "Delete with Transaction: $delete_sql"
@@ -540,7 +540,7 @@ test_database_operations() {
         record_test_result "Delete Data" "PASS" "Record deleted successfully in ${delete_time}ms"
     else
         log_error "Failed to delete test data"
-        log_dba_info "数据删除失败，请检查DELETE权限和外键约束"
+        log_dba_info "Data deletion failed, please check DELETE privileges and foreign key constraints"
         record_test_result "Delete Data" "FAIL" "Cannot delete test data"
     fi
     
@@ -559,14 +559,14 @@ test_database_operations() {
 # Performance benchmark test
 performance_benchmark() {
     log_info "Running performance benchmark tests..."
-    log_dba_info "执行MySQL性能基准测试，评估deploy-innodb-cluster.sh部署的服务性能"
+    log_dba_info "Executing MySQL performance benchmark tests to evaluate service performance deployed via deploy-innodb-cluster.sh"
     
     local mysql_cmd
     mysql_cmd=$(build_mysql_cmd)
     
     # Test 1: Connection performance
     log_info "Testing connection performance..."
-    log_dba_info "测试连接池性能和并发连接能力"
+    log_dba_info "Testing connection pool performance and concurrent connection capability"
     log_technical "Testing 10 sequential connections to measure connection overhead"
     
     local start_time=$(date +%s%N)
@@ -608,13 +608,13 @@ performance_benchmark() {
         record_test_result "Connection Performance" "PASS" "10/10 connections, avg ${avg_time}ms (min: ${min_time}ms, max: ${max_time}ms)"
     else
         log_warning "Connection performance: $connections/10 successful"
-        log_dba_info "连接失败可能原因: max_connections限制、网络延迟、服务器负载过高"
+        log_dba_info "Connection failure possible causes: max_connections limit, network latency, high server load"
         record_test_result "Connection Performance" "FAIL" "Only $connections/10 connections successful"
     fi
     
     # Test 2: Query performance with different query types
     log_info "Testing query performance..."
-    log_dba_info "测试不同类型查询的性能表现"
+    log_dba_info "Testing performance of different query types"
     
     # Simple COUNT query performance
     local query_sql="USE $TEST_DATABASE; SELECT COUNT(*) FROM test_table;"
@@ -673,13 +673,13 @@ performance_benchmark() {
         record_test_result "Query Performance" "PASS" "20/20 queries, avg ${query_avg}ms (min: ${min_query}ms, max: ${max_query}ms)"
     else
         log_warning "Query performance: $queries/20 successful"
-        log_dba_info "查询性能问题可能原因: 索引缺失、表锁定、缓冲池配置不当、磁盘I/O瓶颈"
+        log_dba_info "Query performance issues possible causes: missing indexes, table locking, improper buffer pool configuration, disk I/O bottleneck"
         record_test_result "Query Performance" "FAIL" "Only $queries/20 queries successful"
     fi
     
     # Test 3: Transaction performance
     log_info "Testing transaction performance..."
-    log_dba_info "测试事务处理性能和ACID特性"
+    log_dba_info "Testing transaction processing performance and ACID properties"
     
     local trans_sql="
         USE $TEST_DATABASE;
@@ -710,7 +710,7 @@ performance_benchmark() {
         record_test_result "Transaction Performance" "PASS" "5/5 transactions, avg ${trans_avg}ms"
     else
         log_warning "Transaction performance: $transactions/5 successful, avg ${trans_avg}ms per transaction"
-        log_dba_info "事务性能问题可能原因: 锁等待、死锁、事务日志配置、隔离级别设置"
+        log_dba_info "Transaction performance issues possible causes: lock waits, deadlocks, transaction log configuration, isolation level settings"
         record_test_result "Transaction Performance" "FAIL" "Only $transactions/5 transactions successful"
     fi
 }
@@ -718,7 +718,7 @@ performance_benchmark() {
 # Cleanup test database
 cleanup_test_database() {
     log_info "Cleaning up test database..."
-    log_dba_info "清理测试数据库并验证空间回收"
+    log_dba_info "Cleaning up test database and verifying space reclamation"
     
     local mysql_cmd
     mysql_cmd=$(build_mysql_cmd)
@@ -766,7 +766,7 @@ cleanup_test_database() {
         record_test_result "Database Cleanup" "PASS" "Test database and objects removed successfully"
     else
         log_warning "Test database cleanup failed - please manually remove '$TEST_DATABASE'"
-        log_dba_info "数据库清理失败，可能原因: 权限不足、活跃连接、外键约束"
+        log_dba_info "Database cleanup failed, possible causes: insufficient privileges, active connections, foreign key constraints"
         record_test_result "Database Cleanup" "FAIL" "Manual cleanup required"
     fi
 }
@@ -774,7 +774,7 @@ cleanup_test_database() {
 # Generate verification report
 generate_report() {
     log_info "Generating comprehensive verification report..."
-    log_dba_info "生成详细的DBA级别验证报告"
+    log_dba_info "Generating detailed DBA-level verification report"
     
     echo
     echo "==========================================="
@@ -919,7 +919,7 @@ generate_report() {
 # Additional InnoDB Cluster specific verification
 verify_innodb_cluster_status() {
     log_info "Verifying InnoDB Cluster status..."
-    log_dba_info "检查InnoDB Cluster集群状态和成员健康"
+    log_dba_info "Checking InnoDB Cluster status and member health"
     
     local mysql_cmd
     mysql_cmd=$(build_mysql_cmd)
@@ -966,7 +966,7 @@ verify_innodb_cluster_status() {
 # Test cluster-specific features
 test_cluster_features() {
     log_info "Testing InnoDB Cluster features..."
-    log_dba_info "测试集群特有功能和一致性保证"
+    log_dba_info "Testing cluster-specific features and consistency guarantees"
     
     local mysql_cmd
     mysql_cmd=$(build_mysql_cmd)
@@ -1021,7 +1021,7 @@ test_cluster_features() {
         echo "USE $TEST_DATABASE; DELETE FROM test_table WHERE name = 'Cluster Test';" | eval "$mysql_cmd" 2>/dev/null || true
     else
         log_warning "Cluster write operation failed"
-        log_dba_info "写操作失败可能原因: 节点只读模式、集群分区、冲突检测"
+        log_dba_info "Write operation failure possible causes: node read-only mode, cluster partitioning, conflict detection"
         record_test_result "Cluster Write Operations" "FAIL" "Cannot perform write operations"
     fi
 }

@@ -763,21 +763,20 @@ generate_random_identifier() {
 		length=6
 	fi
 	
+	# Character sets
+	local letters="abcdefghijklmnopqrstuvwxyz"
+	local digits="0123456789"
+	local all_chars="${letters}${digits}"
+	
 	# Generate random string using lowercase letters and numbers
 	# Ensure it starts with a letter (Kubernetes requirement)
-	local first_char
-	first_char=$(printf "%c" $((97 + RANDOM % 26)))  # a-z
+	local first_char_index=$((RANDOM % 26))
+	local first_char="${letters:$first_char_index:1}"
 	
 	local remaining_chars=""
 	for ((i=1; i<length; i++)); do
-		local char_type=$((RANDOM % 36))
-		if [[ $char_type -lt 26 ]]; then
-			# Letter (a-z)
-			remaining_chars+=$(printf "%c" $((97 + char_type)))
-		else
-			# Number (0-9)
-			remaining_chars+=$(printf "%c" $((48 + char_type - 26)))
-		fi
+		local char_index=$((RANDOM % 36))
+		remaining_chars+="${all_chars:$char_index:1}"
 	done
 	
 	echo "${first_char}${remaining_chars}"

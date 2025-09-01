@@ -60,7 +60,9 @@ UPM simplifies the deployment, scaling, and operations of complex services.
 ### 1. Install Unit Operator and Compose Operator
 
 ```bash
-curl -O https://raw.githubusercontent.com/upmio/demo/main/install-operator/install-operator.sh
+curl -sSL \
+  https://raw.githubusercontent.com/upmio/demo/main/install-operator/install-operator.sh \
+  -o install-operator.sh
 chmod +x install-operator.sh
 ./install-operator.sh
 ```

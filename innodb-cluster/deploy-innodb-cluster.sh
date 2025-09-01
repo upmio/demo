@@ -812,8 +812,8 @@ replace_yaml_parameters() {
 	print_info "Starting parameter replacement in YAML files..."
 
 	# Generate random identifiers for resource names
-	local mysql_random_id=$(generate_random_identifier 6)
-	local router_random_id=$(generate_random_identifier 6)
+	mysql_random_id=$(generate_random_identifier 6)
+	router_random_id=$(generate_random_identifier 6)
 	
 	print_info "Generated random identifiers:"
 	print_info "  MySQL UnitSet identifier: $mysql_random_id"
@@ -1058,7 +1058,7 @@ deploy_innodb_cluster() {
 	apply_yaml_file "mysql-us.yaml"
 	if [[ "$DRY_RUN" != "true" ]]; then
 		sleep 10
-		wait_for_resource "unitset" "demo-mysql-xxx" "$NAMESPACE" 600
+		wait_for_resource "unitset" "demo-mysql-${mysql_random_id}" "$NAMESPACE" 600
 	fi
 	echo
 
@@ -1067,7 +1067,7 @@ deploy_innodb_cluster() {
 	if [[ "$DRY_RUN" != "true" ]]; then
 		sleep 5
 		# Wait for MysqlGroupReplication to be ready
-		wait_for_mysql_group_replication "demo-mysql-xxx-replication" "$NAMESPACE" 600 8
+		wait_for_mysql_group_replication "demo-mysql-${mysql_random_id}-replication" "$NAMESPACE" 600 8
 	fi
 	echo
 
@@ -1075,7 +1075,7 @@ deploy_innodb_cluster() {
 	apply_yaml_file "mysql-router-us.yaml"
 	if [[ "$DRY_RUN" != "true" ]]; then
 		sleep 10
-		wait_for_resource "unitset" "demo-mysql-router-yyy" "$NAMESPACE" 300
+		wait_for_resource "unitset" "demo-mysql-router-${router_random_id}" "$NAMESPACE" 300
 	fi
 	echo
 

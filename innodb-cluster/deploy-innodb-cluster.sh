@@ -958,13 +958,13 @@ show_deployment_status() {
 	kubectl get secret -n "$NAMESPACE" "innodb-cluster-sg-demo-secret" || true
 	echo
 
-	# Get NodePort information
+	# Get NodePort information - use correct selector to find mysql-router service
 	local nodeport_svc
-	nodeport_svc=$(kubectl get svc -n "$NAMESPACE" -l "upm.api/service.type=mysql-router" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+	nodeport_svc=$(kubectl get svc -n "$NAMESPACE" -l "unitset.name" --no-headers 2>/dev/null | grep "mysql-router" | grep "NodePort" | awk '{print $1}' | head -1 || echo "")
 
 	if [[ -n "$nodeport_svc" ]]; then
 		local nodeport
-		nodeport=$(kubectl get svc "$nodeport_svc" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+		nodeport=$(kubectl get svc "$nodeport_svc" -n "$NAMESPACE" -o yaml 2>/dev/null | grep "nodePort:" | head -1 | awk '{print $2}' || echo "")
 
 		if [[ -n "$nodeport" ]]; then
 			print_success "InnoDB Cluster access information:"
@@ -977,14 +977,14 @@ show_deployment_status() {
 
 # Show usage information
 show_usage_info() {
-	# Get NodePort port number
+	# Get NodePort port number - use correct selector to find mysql-router service
 	local nodeport_svc
-	nodeport_svc=$(kubectl get svc -n "$NAMESPACE" -l "upm.api/service.type=mysql-router" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+	nodeport_svc=$(kubectl get svc -n "$NAMESPACE" -l "unitset.name" --no-headers 2>/dev/null | grep "mysql-router" | grep "NodePort" | awk '{print $1}' | head -1 || echo "")
 
 	local nodeport="<NodePort Port>"
 	if [[ -n "$nodeport_svc" ]]; then
 		local actual_nodeport
-		actual_nodeport=$(kubectl get svc "$nodeport_svc" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+		actual_nodeport=$(kubectl get svc "$nodeport_svc" -n "$NAMESPACE" -o yaml 2>/dev/null | grep "nodePort:" | head -1 | awk '{print $2}' || echo "")
 		if [[ -n "$actual_nodeport" ]]; then
 			nodeport="$actual_nodeport"
 		fi

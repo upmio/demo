@@ -990,10 +990,31 @@ show_usage_info() {
 		fi
 	fi
 
+	# Get MySQL password dynamically from gen-secret.yaml
+	local mysql_password="mypassword123"  # fallback default
+	
+	# Try to read password from gen-secret.yaml in current directory first, then example directory
+	local gen_secret_file=""
+	if [[ -f "gen-secret.yaml" ]]; then
+		gen_secret_file="gen-secret.yaml"
+	elif [[ -f "example/gen-secret.yaml" ]]; then
+		gen_secret_file="example/gen-secret.yaml"
+	fi
+	
+	if [[ -n "$gen_secret_file" ]]; then
+		# Extract the first password from SECRET_VALUES line
+		local extracted_password
+		extracted_password=$(grep -A 1 "SECRET_VALUES" "$gen_secret_file" 2>/dev/null | grep "value:" | sed -n 's/.*value: "\([^,]*\).*/\1/p' || echo "")
+		if [[ -n "$extracted_password" ]]; then
+			mysql_password="$extracted_password"
+		fi
+	fi
+
 	echo
 	print_info "Usage Instructions:"
 	echo "1. Connect to InnoDB Cluster using MySQL client:"
-	echo "   mysql -h $NODEPORT_IP -P $nodeport -u root -p"
+	echo "   mysql -h $NODEPORT_IP -P $nodeport -u radminuser -p"
+	echo "   Password: $mysql_password"
 	echo
 	echo "2. View cluster status:"
 	echo "   kubectl get unitset -n $NAMESPACE"

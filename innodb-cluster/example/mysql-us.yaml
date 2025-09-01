@@ -19,8 +19,6 @@ spec:
   edition: community
   env:
   - name: PROV_USER
-    value: helix
-  - name: RADM_USER
     value: radminuser
   - name: REPL_USER
     value: replication

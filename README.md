@@ -75,10 +75,6 @@ helm list -n upm-system
 
 # Check UPM component status
 kubectl get pods -n upm-system
-
-# List available service packages
-helm search repo compose-operator
-helm search repo unit-operator
 ```
 
 ## 💡 Deployment Examples
@@ -88,17 +84,15 @@ helm search repo unit-operator
 ```bash
 # Deploy MySQL InnoDB Cluster
 curl -sSL \
-  https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/\
-deploy-mysql-cluster.sh \
-  -o deploy-mysql-cluster.sh
-chmod +x deploy-mysql-cluster.sh
-./deploy-mysql-cluster.sh
+  https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/deploy-innodb-cluster.sh \
+  -o deploy-innodb-cluster.sh
+chmod +x deploy-innodb-cluster.sh
+./deploy-innodb-cluster.sh
 
 
 # Verify deployment
 curl -sSL \
-  https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/\
-verify-mysql.sh \
+  https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/verify-mysql.sh \
   -o verify-mysql.sh
 chmod +x verify-mysql.sh
 ./verify-mysql.sh

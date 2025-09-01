@@ -114,8 +114,7 @@ This script will deploy the following components:
 ```bash
 # Download script directly
 curl -sSL \
-  https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/\
-deploy-innodb-cluster.sh \
+  https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/deploy-innodb-cluster.sh \
   -o deploy-innodb-cluster.sh
 chmod +x deploy-innodb-cluster.sh
 ./deploy-innodb-cluster.sh

@@ -754,7 +754,7 @@ prepare_yaml_files() {
 }
 
 # Generate random identifier for Kubernetes resource names
-# Generates lowercase alphanumeric string (6-8 characters) compliant with Kubernetes naming conventions
+# Generates lowercase alphanumeric string (5 characters) compliant with Kubernetes naming conventions
 generate_random_identifier() {
 	local length="${1:-5}"  # Default length is 5
 	
@@ -801,8 +801,8 @@ replace_yaml_parameters() {
 	print_info "Starting parameter replacement in YAML files..."
 
 	# Generate random identifiers for resource names
-	mysql_random_id=$(generate_random_identifier 6)
-	router_random_id=$(generate_random_identifier 6)
+	mysql_random_id=$(generate_random_identifier 5)
+	router_random_id=$(generate_random_identifier 5)
 	
 	print_info "Generated random identifiers:"
 	print_info "  MySQL UnitSet identifier: $mysql_random_id"

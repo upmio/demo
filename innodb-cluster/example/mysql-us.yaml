@@ -1,0 +1,51 @@
+apiVersion: upm.syntropycloud.io/v1alpha2
+kind: UnitSet
+metadata:
+  finalizers:
+  - upm.io/unit-delete
+  - upm.io/configmap-delete
+  generation: 1
+  labels:
+    upm.api/service-group.name: demo
+    upm.api/service-group.type: innodb-cluster-sg
+    upm.api/service.arch.mode: group_replication
+    upm.api/service.type: mysql
+  name: demo-mysql-xxx
+  namespace: default
+spec:
+  type: mysql
+  units: 3
+  version: 8.0.41
+  edition: community
+  env:
+  - name: PROV_USER
+    value: helix
+  - name: RADM_USER
+    value: radminuser
+  - name: REPL_USER
+    value: replication
+  - name: ADM_USER
+    value: root
+  - name: MON_USER
+    value: monitor
+  podMonitor:
+    enable: true
+  resources:
+    limits:
+      cpu: "1"
+      memory: 2Gi
+    requests:
+      cpu: "1"
+      memory: 2Gi
+  secret:
+    mountPath: /SECRET_MOUNT
+    name: innodb-cluster-sg-demo-secret
+  storages:
+  - mountPath: /DATA_MOUNT
+    name: data
+    size: 10Gi
+    storageClassName: lvm-localpv
+  - mountPath: /LOG_MOUNT
+    name: log
+    size: 10Gi
+    storageClassName: lvm-localpv

@@ -1,0 +1,113 @@
+[0;36m================================================[0m
+[0;34m[INFO][0m UPM (Universal Package Manager) Installation Script
+[0;34m[INFO][0m Version: 1.0.0
+[0;34m[INFO][0m Description: Install UPM operators in Kubernetes cluster
+[0;36m================================================[0m
+[0;36m================================================[0m
+[0;34m[INFO][0m Starting UPM installation precheck...
+[0;34m[INFO][0m Checking required command tools...
+[0;32m[SUCCESS][0m All required command tools check passed
+[0;34m[INFO][0m Checking kubectl cluster connection...
+[0;32m[SUCCESS][0m kubectl cluster connection is healthy
+[0;34m[INFO][0m Current cluster info: Kubernetes control plane is running at https://10.37.132.101:6443
+[0;34m[INFO][0m Checking cert-manager dependency...
+[0;32m[SUCCESS][0m cert-manager dependency check passed
+[0;34m[INFO][0m Getting cluster node list...
+[0;34m[INFO][0m Available node list:
+[0;32m[SUCCESS][0m Selected target node: k8s-2
+[0;36m================================================[0m
+[0;34m[INFO][0m Installation configuration confirmation:
+[0;34m[INFO][0m Target cluster: Kubernetes control plane is running at https://10.37.132.101:6443
+[0;34m[INFO][0m Target node: k8s-2
+[0;36m================================================[0m
+[0;36m================================================[0m
+[0;34m[INFO][0m Adding label to node 'k8s-2'...
+[0;32m[SUCCESS][0m Node 'k8s-2' already has upm.operator=true label
+[0;36m================================================[0m
+[0;34m[INFO][0m Step 2/3: Installing unit-operator...
+[0;34m[INFO][0m Checking if unit-operator is already installed...
+[0;34m[INFO][0m Adding unit-operator Helm repository...
+[0;32m[SUCCESS][0m unit-operator repository added successfully
+[0;34m[INFO][0m Updating unit-operator Helm repository...
+[0;32m[SUCCESS][0m unit-operator repository updated successfully
+[0;34m[INFO][0m Installing unit-operator...
+[0;32m[SUCCESS][0m unit-operator installed successfully
+[0;34m[INFO][0m Checking unit-operator health status...
+[0;34m[INFO][0m Waiting for unit-operator deployment to be ready (timeout: 300s)...
+[0;32m[SUCCESS][0m unit-operator deployment is ready
+[0;34m[INFO][0m Checking unit-operator pod status...
+[0;34m[INFO][0m unit-operator pod is pending... (attempt 1/60)
+[0;34m[INFO][0m unit-operator pod is pending... (attempt 2/60)
+[0;34m[INFO][0m unit-operator pod is pending... (attempt 3/60)
+[0;34m[INFO][0m unit-operator pod is pending... (attempt 4/60)
+[0;34m[INFO][0m unit-operator pod is pending... (attempt 5/60)
+[0;34m[INFO][0m unit-operator pod is pending... (attempt 6/60)
+[0;34m[INFO][0m unit-operator pod is starting... (attempt 7/60)
+[0;34m[INFO][0m unit-operator pod is starting... (attempt 8/60)
+[0;34m[INFO][0m unit-operator pod is starting... (attempt 9/60)
+[0;34m[INFO][0m unit-operator pod is starting... (attempt 10/60)
+[0;32m[SUCCESS][0m unit-operator pod (unit-operator-ddcb7f4b9-rwdvq) is running normally
+[0;34m[INFO][0m Pod details:
+NAME                            READY   STATUS    RESTARTS   AGE   IP               NODE    NOMINATED NODE   READINESS GATES
+unit-operator-ddcb7f4b9-rwdvq   1/1     Running   0          55s   10.233.114.131   k8s-1   <none>           <none>
+[0;36m================================================[0m
+[0;34m[INFO][0m Step 3/3: Installing compose-operator...
+[0;34m[INFO][0m Checking if compose-operator is already installed...
+[0;32m[SUCCESS][0m compose-operator already installed, skipping installation step
+[0;34m[INFO][0m Checking compose-operator health status...
+[0;34m[INFO][0m Waiting for compose-operator deployment to be ready (timeout: 300s)...
+[0;32m[SUCCESS][0m compose-operator deployment is ready
+[0;34m[INFO][0m Checking compose-operator pod status...
+[0;32m[SUCCESS][0m compose-operator pod (compose-operator-db74bc89-mc5ss) is running normally
+[0;34m[INFO][0m Pod details:
+NAME                              READY   STATUS    RESTARTS   AGE   IP              NODE    NOMINATED NODE   READINESS GATES
+compose-operator-db74bc89-mc5ss   1/1     Running   0          32h   10.233.81.217   k8s-2   <none>           <none>
+[0;36m================================================[0m
+[0;34m[INFO][0m Verifying installation results...
+[0;34m[INFO][0m Checking upm-system namespace...
+[0;32m[SUCCESS][0m upm-system namespace exists
+[0;34m[INFO][0m Checking Helm deployment status...
+[0;32m[SUCCESS][0m unit-operator Helm release deployed
+[0;32m[SUCCESS][0m compose-operator Helm release deployed
+[0;34m[INFO][0m Checking Pod running status...
+[0;34m[INFO][0m Pods in upm-system namespace:
+NAME                              READY   STATUS    RESTARTS   AGE
+compose-operator-db74bc89-mc5ss   1/1     Running   0          32h
+unit-operator-ddcb7f4b9-rwdvq     1/1     Running   0          56s
+[0;34m[INFO][0m Verifying node labels...
+[0;32m[SUCCESS][0m Node 'k8s-2' label verification passed
+[0;36m================================================[0m
+[0;34m[INFO][0m Performing post-installation environment checks...
+[0;34m[INFO][0m Checking StorageClass availability...
+[0;32m[SUCCESS][0m Found        2 available StorageClass(es)
+[0;34m[INFO][0m Available StorageClass list:
+NAME          PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+local-path    rancher.io/local-path   Delete          WaitForFirstConsumer   false                  43h
+lvm-localpv   local.csi.openebs.io    Delete          WaitForFirstConsumer   true                   43h
+[0;34m[INFO][0m Checking Prometheus installation status...
+[0;32m[SUCCESS][0m Prometheus is installed (PodMonitor CRD detected)
+[0;34m[INFO][0m Prometheus is running in the following namespaces:
+[0;34m[INFO][0m   • prometheus
+[0;36m================================================[0m
+[0;32m[SUCCESS][0m All post-installation checks passed! Environment is ready
+[0;36m================================================[0m
+[0;34m[INFO][0m You can now:
+[0;34m[INFO][0m 1. Deploy UPM application packages: Use kubectl apply to deploy your application configurations
+[0;34m[INFO][0m 2. Access Prometheus monitoring: Check application status and performance metrics
+[0;34m[INFO][0m 3. Use persistent storage: Applications can create and use PVCs normally
+[0;36m================================================[0m
+[0;36m================================================[0m
+[0;32m[SUCCESS][0m UPM installation completed!
+[0;36m================================================[0m
+[0;34m[INFO][0m Installation summary:
+[0;34m[INFO][0m • Target node: k8s-2 (labeled with upm.operator=true)
+[0;34m[INFO][0m • unit-operator: Installed in upm-system namespace
+[0;34m[INFO][0m • compose-operator: Installed in upm-system namespace
+[0;34m[INFO][0m • Installation log: upm-install-20250901-103927.log
+[0;36m================================================[0m
+[0;34m[INFO][0m Next steps:
+[0;34m[INFO][0m 1. Check all component status: kubectl get all -n upm-system
+[0;34m[INFO][0m 2. Install upm-packages: Refer to README documentation
+[0;34m[INFO][0m 3. Start deploying services: Refer to UPM documentation for service deployment
+[0;36m================================================[0m
+[0;32m[SUCCESS][0m Installation completed! Please review the above information to confirm all components are running properly.

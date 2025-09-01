@@ -1,0 +1,56 @@
+apiVersion: upm.syntropycloud.io/v1alpha2
+kind: UnitSet
+metadata:
+  annotations:
+    unit-operator.external-service.type: NodePort
+    upm.api/nodeport-ip: 10.37.132.105
+  finalizers:
+  - upm.io/unit-delete
+  - upm.io/configmap-delete
+  generation: 1
+  labels:
+    upm.api/service-group.name: demo
+    upm.api/service-group.type: innodb-cluster-sg
+    upm.api/service.arch.mode: clone
+    upm.api/service.type: mysql-router
+  name: demo-mysql-router-yyy
+  namespace: default
+spec:
+  type: mysql-router
+  units: 2
+  version: 8.0.41
+  edition: community
+  emptyDir:
+  - mountPath: /DATA_MOUNT
+    name: data
+    size: 5Gi
+  - mountPath: /LOG_MOUNT
+    name: log
+    size: 5Gi
+  env:
+  - name: PROV_USER
+    value: helix
+  - name: RADM_USER
+    value: radminuser
+  - name: REPL_USER
+    value: replication
+  - name: ADM_USER
+    value: root
+  - name: MON_USER
+    value: monitor
+  - name: MYSQL_SERVICE_NAME
+    value: demo-mysql-xxx
+  externalService:
+    type: NodePort
+  podMonitor:
+    enable: true
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: "1"
+      memory: 1Gi
+  secret:
+    mountPath: /SECRET_MOUNT
+    name: innodb-cluster-sg-demo-secret

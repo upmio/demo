@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# UPM (Unified Platform Management) Installation Script
+# UPM (Unified Platform Management) Operator Installation Script
 # Used to install unit-operator and compose-operator in Kubernetes cluster
 # Author: UPM Team
 # Version: 1.0.0
@@ -10,7 +10,7 @@ set -euo pipefail
 
 # Script configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="${SCRIPT_DIR}/install-upm.log"
+LOG_FILE="${SCRIPT_DIR}/install-operator.log"
 TARGET_NODE="${1:-}"
 
 # Color definitions
@@ -22,7 +22,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 日志文件
-LOG_FILE="upm-install-$(date +%Y%m%d-%H%M%S).log"
+LOG_FILE="install-operator-$(date +%Y%m%d-%H%M%S).log"
 
 # Logging functions
 print_info() {
@@ -91,7 +91,7 @@ confirm() {
 # Precheck function
 precheck() {
     print_separator
-    print_info "Starting UPM installation precheck..."
+    print_info "Starting installation precheck..."
 
     # Check required commands
     print_info "Checking required command tools..."
@@ -135,7 +135,7 @@ precheck() {
 
     print_success "cert-manager dependency check passed"
 
-    if ! confirm "Confirm to install UPM on this cluster?"; then
+    if ! confirm "Confirm to install unit-operator and compose-operator on this cluster?"; then
         print_info "User cancelled installation"
         exit 0
     fi
@@ -194,7 +194,7 @@ precheck() {
     print_info "Target node: $TARGET_NODE"
     print_separator
 
-    if ! confirm "Confirm to start UPM installation?" "y"; then
+    if ! confirm "Confirm to start unit-operator and compose-operator installation?" "y"; then
         print_info "User cancelled installation"
         exit 0
     fi

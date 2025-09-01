@@ -50,23 +50,12 @@ platform for subsequent database and middleware management.
 
 ## Quick Start
 
-### 1. Download Script
+### 1. Download Script and Interactive Installation**
 
 ```bash
-# Clone repository
-git clone https://github.com/upmio/demo.git
-cd demo/install-upm
-
-# Or download script directly
-curl -O https://raw.githubusercontent.com/upmio/demo/main/install-upm/install-upm.sh
-chmod +x install-upm.sh
-```
-
-### 2. Interactive Installation
-
-```bash
-# Run installation script
-./install-upm.sh
+curl -O https://raw.githubusercontent.com/upmio/demo/main/install-operator/install-operator.sh
+chmod +x install-operator.sh
+./install-operator.sh
 ```
 
 The script will guide you through the following steps:
@@ -77,17 +66,7 @@ The script will guide you through the following steps:
 4. **Component Installation**: Install UPM Operator components
 5. **Health Verification**: Verify installation results and component status
 
-### 3. Non-Interactive Installation
-
-```bash
-# Install on specified target node
-./install-upm.sh --node-name <node-name>
-
-# Or use node labels for selection
-./install-upm.sh --node-label "node-role.kubernetes.io/control-plane"
-```
-
-### 4. Installation Verification
+### 2. Installation Verification
 
 After installation completion, verify component status:
 
@@ -110,74 +89,8 @@ NAME                                READY   STATUS    RESTARTS   AGE
 compose-operator-xxx                1/1     Running   0          2m
 unit-operator-xxx                   1/1     Running   0          2m
 
-# Should see UPM-related CRDs
-unitsets.upm.api                    2023-xx-xx
-composesets.upm.api                 2023-xx-xx
 
 # Target nodes should have upm.operator/node=true label
-```
-
-## Post-Installation Configuration
-
-### upm-packages Installation
-
-After UPM installation, it's recommended to install upm-packages for
-package management functionality:
-
-```bash
-# Download upm-packages script
-curl -sSL \
-  https://raw.githubusercontent.com/upmio/upm-packages/main/upm-pkg-mgm.sh \
-  -o upm-pkg-mgm.sh
-chmod +x upm-pkg-mgm.sh
-
-# View available packages
-./upm-pkg-mgm.sh list
-
-# Install specific package (e.g., MySQL)
-./upm-pkg-mgm.sh install mysql
-
-# Install multiple packages
-./upm-pkg-mgm.sh install mysql redis kafka
-```
-
-### StorageClass Configuration
-
-If there's no default StorageClass in the cluster, you need to create one:
-
-```bash
-# View existing StorageClasses
-kubectl get storageclass
-
-# If none exists, create a simple hostPath StorageClass (for testing only)
-cat <<EOF | kubectl apply -f -
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: local-storage
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: kubernetes.io/no-provisioner
-volumeBindingMode: WaitForFirstConsumer
-EOF
-```
-
-### Prometheus Configuration
-
-If monitoring functionality is needed, you can install Prometheus:
-
-```bash
-# Add Prometheus Helm repository
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-
-# Install Prometheus Operator
-helm install prometheus prometheus-community/kube-prometheus-stack \
-  --namespace monitoring \
-  --create-namespace
-
-# Verify installation
-kubectl get pods -n monitoring
 ```
 
 ## Troubleshooting

@@ -109,24 +109,22 @@ This script will deploy the following components:
 
 ## Quick Start
 
-### 1. Download Script
+### 1. Deploy MySQL InnoDB Cluster
 
 ```bash
-# Clone repository
-git clone https://github.com/upmio/demo.git
-cd demo/innodb-cluster
-
-# Or download script directly
+# Download script directly
 curl -sSL \
   https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/\
 deploy-mysql-cluster.sh \
   -o deploy-mysql-cluster.sh
 chmod +x deploy-mysql-cluster.sh
+./deploy-mysql-cluster.sh
 ```
 
 ### 2. Interactive Deployment
 
 ```bash
+
 # Run interactive deployment
 ./verify-mysql.sh
 

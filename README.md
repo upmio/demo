@@ -57,25 +57,26 @@ UPM simplifies the deployment, scaling, and operations of complex services.
 - **kubectl** command-line tool
 - **Sufficient cluster resources** (recommended 4 cores, 8GB+ memory)
 
-### 1. Install UPM Platform
+### 1. Install Unit Operator and Compose Operator
 
 ```bash
-# Clone the repository
-git clone https://github.com/upmio/demo.git
-cd demo
-
-# Run the installation script
-./install-upm/install-upm.sh
+curl -O https://raw.githubusercontent.com/upmio/demo/main/install-operator/install-operator.sh
+chmod +x install-operator.sh
+./install-operator.sh
 ```
 
 ### 2. Verify Installation
 
 ```bash
+# Check operator status
+helm list -n upm-system
+
 # Check UPM component status
 kubectl get pods -n upm-system
 
 # List available service packages
-helm search repo upm
+helm search repo compose-operator
+helm search repo unit-operator
 ```
 
 ## 💡 Deployment Examples
@@ -83,8 +84,22 @@ helm search repo upm
 ### MySQL InnoDB Cluster High Availability
 
 ```bash
-# Deploy 3-node MySQL InnoDB Cluster
-./innodb-cluster/verify-mysql.sh
+# Deploy MySQL InnoDB Cluster
+curl -sSL \
+  https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/\
+deploy-mysql-cluster.sh \
+  -o deploy-mysql-cluster.sh
+chmod +x deploy-mysql-cluster.sh
+./deploy-mysql-cluster.sh
+
+
+# Verify deployment
+curl -sSL \
+  https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/\
+verify-mysql.sh \
+  -o verify-mysql.sh
+chmod +x verify-mysql.sh
+./verify-mysql.sh
 ```
 
 **Features:**

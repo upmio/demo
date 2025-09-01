@@ -1,4 +1,4 @@
-# UPM (Unified Management Platform) Installation Script
+# UPM (Unified Management Platform) Operator Installation Script
 
 This is an interactive script tool for automated installation of UPM (Unified
 Platform Management) core components in Kubernetes clusters. This script can

@@ -194,45 +194,45 @@ mysql -h <NodePort-IP> -P <NodePort-Port> -u root -p
 mysql -h 10.37.132.105 -P 30306 -u root -p
 ```
 
-### 查看集群状态
+### Check Cluster Status
 
 ```bash
-# 查看 UnitSet 状态
+# Check UnitSet status
 kubectl get unitset -n <namespace>
 
-# 查看 Pod 状态
+# Check Pod status
 kubectl get pods -n <namespace> \
   -l "upm.api/service-group.name=demo"
 
-# 查看服务状态
+# Check service status
 kubectl get svc -n <namespace> \
   -l "upm.api/service-group.name=demo"
 
-# 查看 Group Replication 状态
+# Check Group Replication status
 kubectl get mysqlgroupreplication -n <namespace>
 ```
 
-### 查看日志
+### View Logs
 
 ```bash
-# 查看 MySQL 日志
+# View MySQL logs
 kubectl logs -n <namespace> -l upm.api/service.type=mysql
 
-# 查看 MySQL Router 日志
+# View MySQL Router logs
 kubectl logs -n <namespace> -l upm.api/service.type=mysql-router
 
-# 查看特定 Pod 日志
+# View specific Pod logs
 kubectl logs -n <namespace> <pod-name>
 ```
 
-### 获取数据库密码
+### Retrieve Database Passwords
 
 ```bash
-# 查看 Secret 中的密码
+# View passwords in Secret
 kubectl get secret innodb-cluster-sg-demo-secret -n <namespace> \
   -o yaml
 
-# 解码 root 用户密码
+# Decode root user password
 kubectl get secret innodb-cluster-sg-demo-secret -n <namespace> \
   -o jsonpath='{.data.root}' | base64 -d
 ```
@@ -389,21 +389,21 @@ chmod +x ../upm-pkg-mgm.sh
 ../upm-pkg-mgm.sh install mysql mysql-router
 ```
 
-### 调试命令
+### Debug Commands
 
 ```bash
-# 检查集群连接
+# Check cluster connectivity
 kubectl cluster-info
 
-# 检查资源使用情况
+# Check resource usage
 kubectl top nodes
 kubectl top pods -n <namespace>
 
-# 检查事件
+# Check events
 kubectl get events -n <namespace> \
   --sort-by='.lastTimestamp'
 
-# 检查 UnitSet 详细信息
+# Check UnitSet detailed information
 kubectl describe unitset <unitset-name> \
   -n <namespace>
 ```

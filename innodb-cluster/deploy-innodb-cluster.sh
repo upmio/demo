@@ -52,6 +52,21 @@ print_error() {
 	echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Cross-platform in-place sed helper (GNU vs BSD)
+sed_inplace() {
+	local script="$1"
+	local file="$2"
+	# Detect OS type for sed compatibility
+	if [[ "$(uname)" == "Darwin" ]]; then
+		# macOS uses BSD sed
+		sed -i "" "$script" "$file"
+	else
+		# Linux uses GNU sed
+		sed -i "$script" "$file"
+	fi
+}
+
+
 # Display help information
 show_help() {
 	cat <<EOF
@@ -201,12 +216,18 @@ get_mysql_versions() {
 check_dependencies() {
 	print_info "Checking dependencies..."
 
-	local deps=("kubectl" "sed" "helm")
+	local deps=("kubectl" "sed" "helm" "curl" "jq")
 	for dep in "${deps[@]}"; do
 		if ! command -v "$dep" &>/dev/null; then
 			print_error "Missing dependency: $dep"
 			if [[ "$dep" == "helm" ]]; then
 				print_error "Please install Helm first: https://helm.sh/docs/intro/install/"
+			fi
+			if [[ "$dep" == "curl" ]]; then
+				print_error "Please install curl first or ensure it's available in PATH"
+			fi
+			if [[ "$dep" == "jq" ]]; then
+				print_error "Please install jq first: https://stedolan.github.io/jq/"
 			fi
 			exit 1
 		fi
@@ -240,7 +261,7 @@ install_upm_packages() {
 	
 	print_info "Installing UPM package components for MySQL version $mysql_version..."
 
-	local upm_script="${SCRIPT_DIR}/../upm-pkg-mgm.sh"
+	local upm_script="${SCRIPT_DIR}/upm-pkg-mgm.sh"
 
 	# If script doesn't exist, try to download
 	if [[ ! -f "$upm_script" ]]; then
@@ -286,19 +307,23 @@ install_upm_packages() {
 check_yaml_files() {
 	print_info "Checking YAML configuration files..."
 
+	local missing_files=()
+
 	if [[ ! -d "$YAML_DIR" ]]; then
-		print_error "YAML directory does not exist: $YAML_DIR"
-		exit 1
+		print_warning "YAML directory not found: $YAML_DIR"
+	else
+		for yaml_file in "${YAML_FILES[@]}"; do
+			if [[ ! -f "$YAML_DIR/$yaml_file" ]]; then
+				missing_files+=("$yaml_file")
+			fi
+		done
 	fi
 
-	for yaml_file in "${YAML_FILES[@]}"; do
-		if [[ ! -f "$YAML_DIR/$yaml_file" ]]; then
-			print_error "YAML file does not exist: $YAML_DIR/$yaml_file"
-			exit 1
-		fi
-	done
-
-	print_success "YAML file check passed"
+	if [[ ${#missing_files[@]} -gt 0 || ! -d "$YAML_DIR" ]]; then
+		print_warning "Local YAML templates missing. They will be downloaded automatically during preparation."
+	else
+		print_success "Local YAML templates found"
+	fi
 }
 
 # IP address format validation
@@ -347,25 +372,28 @@ select_from_list() {
 	local custom_prompt="Please enter custom value"
 	local validation_func=""
 
-	# Check if the last few parameters are special parameters
+	# Parse trailing special parameters in strict order:
+	# 1) validation function (rightmost), 2) allow_custom flag, 3) custom prompt
 	local last_idx=$((${#options[@]} - 1))
-	if [[ ${#options[@]} -gt 0 && "${options[$last_idx]}" =~ ^(validate_ip_address|true|false)$ ]]; then
-		if [[ "${options[$last_idx]}" == "validate_ip_address" ]]; then
-			validation_func="${options[$last_idx]}"
-			unset options[$last_idx]
-			last_idx=$((last_idx - 1))
-		fi
 
-		if [[ ${#options[@]} -gt 0 && "${options[$last_idx]}" != "true" && "${options[$last_idx]}" != "false" ]]; then
-			custom_prompt="${options[$last_idx]}"
-			unset options[$last_idx]
-			last_idx=$((last_idx - 1))
-		fi
+	# 1) validation function
+	if [[ ${#options[@]} -gt 0 && "${options[$last_idx]}" == "validate_ip_address" ]]; then
+		validation_func="${options[$last_idx]}"
+		unset options[$last_idx]
+		last_idx=$((last_idx - 1))
+	fi
 
-		if [[ ${#options[@]} -gt 0 && ("${options[$last_idx]}" == "true" || "${options[$last_idx]}" == "false") ]]; then
-			allow_custom="${options[$last_idx]}"
-			unset options[$last_idx]
-		fi
+	# 2) allow_custom flag (true/false)
+	if [[ ${#options[@]} -gt 0 && ( "${options[$last_idx]}" == "true" || "${options[$last_idx]}" == "false" ) ]]; then
+		allow_custom="${options[$last_idx]}"
+		unset options[$last_idx]
+		last_idx=$((last_idx - 1))
+	fi
+
+	# 3) custom prompt (only when allow_custom is true)
+	if [[ "$allow_custom" == "true" && ${#options[@]} -gt 0 ]]; then
+		custom_prompt="${options[$last_idx]}"
+		unset options[$last_idx]
 	fi
 
 	local options_count=${#options[@]}
@@ -617,12 +645,39 @@ prepare_yaml_files() {
 	# Create temporary directory
 	mkdir -p "$TEMP_DIR"
 
-	# Copy YAML files to temporary directory
+	# Copy or download YAML files to temporary directory
+	local raw_base="https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/example"
 	for yaml_file in "${YAML_FILES[@]}"; do
-		cp "$YAML_DIR/$yaml_file" "$TEMP_DIR/"
+		if [[ -f "$YAML_DIR/$yaml_file" ]]; then
+			cp "$YAML_DIR/$yaml_file" "$TEMP_DIR/"
+			print_info "Using local template: $yaml_file"
+		else
+			print_info "Downloading template: $yaml_file"
+			local url="$raw_base/$yaml_file"
+			if curl -fsSL "$url" -o "$TEMP_DIR/$yaml_file"; then
+				print_success "$yaml_file downloaded successfully"
+			else
+				print_error "Failed to download $yaml_file from $url"
+				exit 1
+			fi
+		fi
 	done
 
 	print_success "YAML files preparation completed"
+}
+
+# Escape special characters for sed replacement text
+escape_sed_replacement() {
+	local input="$1"
+	# Replace each special character individually to avoid conflicts
+	local result="$input"
+	# Escape backslashes (must be first)
+	result="${result//\\/\\\\}"
+	# Escape forward slashes
+	result="${result//\//\\/}"
+	# Escape ampersands
+	result="${result//&/\\&}"
+	printf '%s' "$result"
 }
 
 # Replace parameters in YAML files
@@ -630,28 +685,29 @@ replace_yaml_parameters() {
 	print_info "Starting parameter replacement in YAML files..."
 
 	# Escape special characters to avoid sed errors
-	local escaped_namespace=$(printf '%s\n' "$NAMESPACE" | sed 's/[\[\]\\.*^$()+?{|]/\\&/g')
-	local escaped_storage_class=$(printf '%s\n' "$STORAGE_CLASS" | sed 's/[\[\]\\.*^$()+?{|]/\\&/g')
-	local escaped_nodeport_ip=$(printf '%s\n' "$NODEPORT_IP" | sed 's/[\[\]\\.*^$()+?{|]/\\&/g')
-	local escaped_mysql_version=$(printf '%s\n' "$MYSQL_VERSION" | sed 's/[\[\]\\.*^$()+?{|]/\\&/g')
-	local escaped_router_version=$(printf '%s\n' "$MYSQL_VERSION" | sed 's/[\[\]\\.*^$()+?{|]/\\&/g')
+	local escaped_namespace=$(escape_sed_replacement "$NAMESPACE")
+	local escaped_storage_class=$(escape_sed_replacement "$STORAGE_CLASS")
+	local escaped_nodeport_ip=$(escape_sed_replacement "$NODEPORT_IP")
+	local escaped_mysql_version=$(escape_sed_replacement "$MYSQL_VERSION")
+	local escaped_router_version=$(escape_sed_replacement "$MYSQL_VERSION")
 
 	# Replace NAMESPACE environment variable value in gen-secret.yaml
-	sed -i "" "s/\$default/${escaped_namespace}/g" "$TEMP_DIR/gen-secret.yaml"
+	# Use pipe delimiter to avoid conflicts with common characters
+	sed_inplace 's|\$default|'"${escaped_namespace}"'|g' "$TEMP_DIR/gen-secret.yaml"
 
 	# Replace parameters in mysql-us.yaml
-	sed -i "" "s/namespace: default/namespace: ${escaped_namespace}/g" "$TEMP_DIR/mysql-us.yaml"
-	sed -i "" "s/storageClassName: lvm-localpv/storageClassName: ${escaped_storage_class}/g" "$TEMP_DIR/mysql-us.yaml"
-	sed -i "" "s/version: [0-9.]*/version: ${escaped_mysql_version}/g" "$TEMP_DIR/mysql-us.yaml"
+	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-us.yaml"
+	sed_inplace 's|storageClassName: lvm-localpv|storageClassName: '"${escaped_storage_class}"'|g' "$TEMP_DIR/mysql-us.yaml"
+	sed_inplace 's|version: [0-9][0-9.]*|version: '"${escaped_mysql_version}"'|g' "$TEMP_DIR/mysql-us.yaml"
 
 	# Replace namespace and service references in mysql-group-replication.yaml
-	sed -i "" "s/namespace: default/namespace: ${escaped_namespace}/g" "$TEMP_DIR/mysql-group-replication.yaml"
-	sed -i "" "s/\.default/\.${escaped_namespace}/g" "$TEMP_DIR/mysql-group-replication.yaml"
+	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-group-replication.yaml"
+	sed_inplace 's|\.default|.'"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-group-replication.yaml"
 
 	# Replace parameters in mysql-router-us.yaml
-	sed -i "" "s/namespace: default/namespace: ${escaped_namespace}/g" "$TEMP_DIR/mysql-router-us.yaml"
-	sed -i "" "s/upm.api\/nodeport-ip: [0-9.]*/upm.api\/nodeport-ip: ${escaped_nodeport_ip}/g" "$TEMP_DIR/mysql-router-us.yaml"
-	sed -i "" "s/version: [0-9.]*/version: ${escaped_router_version}/g" "$TEMP_DIR/mysql-router-us.yaml"
+	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
+	sed_inplace 's|upm.api/nodeport-ip: [0-9][0-9.]*|upm.api/nodeport-ip: '"${escaped_nodeport_ip}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
+	sed_inplace 's|version: [0-9][0-9.]*|version: '"${escaped_router_version}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
 
 	print_success "Parameter replacement completed"
 }
@@ -747,6 +803,74 @@ wait_for_unitset() {
 	return 1
 }
 
+# Wait for MysqlGroupReplication readiness (status.ready equals true)
+wait_for_mysql_group_replication() {
+	local mgr_name="$1"
+	local namespace="$2"
+	local timeout="${3:-600}"  # Default 10 minutes timeout
+	local check_interval="${4:-8}"  # Default 8 seconds check interval
+
+	print_info "Waiting for MysqlGroupReplication $mgr_name to be ready..."
+	print_info "Timeout: ${timeout}s, Check interval: ${check_interval}s"
+
+	local start_time=$(date +%s)
+	local end_time=$((start_time + timeout))
+	local check_count=0
+
+	while [[ $(date +%s) -lt $end_time ]]; do
+		check_count=$((check_count + 1))
+		local current_time=$(date +%s)
+		local elapsed_time=$((current_time - start_time))
+
+		# Get MysqlGroupReplication status information
+		local status_ready
+		status_ready=$(kubectl get mysqlgroupreplication "$mgr_name" -n "$namespace" -o jsonpath='{.status.ready}' 2>/dev/null)
+
+		if [[ "$status_ready" == "true" ]]; then
+			print_success "MysqlGroupReplication $mgr_name is ready (status.ready: true)"
+			print_info "Ready after ${elapsed_time}s (${check_count} checks)"
+			return 0
+		fi
+
+		# Show current status with progress indicator
+		local progress_dots=""
+		local dot_count=$((check_count % 4))
+		for ((i=0; i<dot_count; i++)); do
+			progress_dots+="."
+		done
+
+		if [[ -n "$status_ready" ]]; then
+			print_info "MysqlGroupReplication $mgr_name status: ready=$status_ready (${elapsed_time}s elapsed)$progress_dots"
+		else
+			print_info "MysqlGroupReplication $mgr_name status: checking... (${elapsed_time}s elapsed)$progress_dots"
+		fi
+
+		# Check if resource exists
+		if ! kubectl get mysqlgroupreplication "$mgr_name" -n "$namespace" &>/dev/null; then
+			print_error "MysqlGroupReplication $mgr_name not found in namespace $namespace"
+			return 1
+		fi
+
+		sleep "$check_interval"
+	done
+
+	print_warning "MysqlGroupReplication $mgr_name wait timeout after ${timeout}s"
+	print_info "Final status check..."
+	
+	# Final status check and detailed error information
+	local final_status
+	final_status=$(kubectl get mysqlgroupreplication "$mgr_name" -n "$namespace" -o jsonpath='{.status}' 2>/dev/null)
+	if [[ -n "$final_status" ]]; then
+		print_info "Final status: $final_status"
+	fi
+	
+	# Show resource description for troubleshooting
+	print_info "Resource description for troubleshooting:"
+	kubectl describe mysqlgroupreplication "$mgr_name" -n "$namespace" 2>/dev/null || true
+	
+	return 1
+}
+
 # Check Job status
 wait_for_job() {
 	local job_name="$1"
@@ -793,6 +917,8 @@ deploy_innodb_cluster() {
 	apply_yaml_file "mysql-group-replication.yaml"
 	if [[ "$DRY_RUN" != "true" ]]; then
 		sleep 5
+		# Wait for MysqlGroupReplication to be ready
+		wait_for_mysql_group_replication "demo-mysql-xxx-replication" "$NAMESPACE" 600 8
 	fi
 	echo
 

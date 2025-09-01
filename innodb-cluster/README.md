@@ -115,10 +115,10 @@ This script will deploy the following components:
 # Download script directly
 curl -sSL \
   https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/\
-deploy-mysql-cluster.sh \
-  -o deploy-mysql-cluster.sh
-chmod +x deploy-mysql-cluster.sh
-./deploy-mysql-cluster.sh
+deploy-innodb-cluster.sh \
+  -o deploy-innodb-cluster.sh
+chmod +x deploy-innodb-cluster.sh
+./deploy-innodb-cluster.sh
 ```
 
 ### 2. Interactive Deployment

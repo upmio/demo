@@ -756,11 +756,11 @@ prepare_yaml_files() {
 # Generate random identifier for Kubernetes resource names
 # Generates lowercase alphanumeric string (6-8 characters) compliant with Kubernetes naming conventions
 generate_random_identifier() {
-	local length="${1:-6}"  # Default length is 6
+	local length="${1:-5}"  # Default length is 5
 	
-	# Ensure length is between 6-8
-	if [[ "$length" -lt 6 || "$length" -gt 8 ]]; then
-		length=6
+	# Ensure length is between 5-8
+	if [[ "$length" -lt 5 || "$length" -gt 8 ]]; then
+		length=5
 	fi
 	
 	# Character sets

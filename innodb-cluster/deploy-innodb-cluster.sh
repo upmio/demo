@@ -201,6 +201,28 @@ get_mysql_versions() {
 	fi
 }
 
+# Validate MySQL version
+validate_mysql_version() {
+	local version="$1"
+	
+	if [[ -z "$version" ]]; then
+		return 1
+	fi
+	
+	# Get available MySQL versions
+	local available_versions
+	available_versions=$(get_mysql_versions)
+	
+	# Check if the provided version is in the available versions list
+	while IFS= read -r available_version; do
+		if [[ "$version" == "$available_version" ]]; then
+			return 0
+		fi
+	done <<< "$available_versions"
+	
+	return 1
+}
+
 # Get available MySQL Router version list
 
 # Check dependencies
@@ -417,6 +439,14 @@ select_from_list() {
 
 	local options_count=${#options[@]}
 
+	# Check if stdin is a pipe/redirect (non-interactive)
+	if [[ ! -t 0 ]]; then
+		# Non-interactive mode: return first option as default
+		print_warning "Non-interactive input detected, using first option as default: ${options[0]}" >&2
+		echo "${options[0]}"
+		return 0
+	fi
+
 	while true; do
 		echo >&2
 		print_info "$title" >&2
@@ -438,7 +468,21 @@ select_from_list() {
 		if [[ "$allow_custom" == "true" ]]; then
 			max_choice=$((options_count + 1))
 		fi
-		read -p "Please select (1-$max_choice): " choice
+		
+		# Use timeout for read to prevent infinite loops
+		local choice
+		if ! read -t 30 -p "Please select (1-$max_choice): " choice; then
+			print_warning "Input timeout or EOF detected, using first option as default: ${options[0]}" >&2
+			echo "${options[0]}"
+			return 0
+		fi
+
+		# Handle empty input
+		if [[ -z "$choice" ]]; then
+			print_warning "Empty input detected, using first option as default: ${options[0]}" >&2
+			echo "${options[0]}"
+			return 0
+		fi
 
 		# Validate if input is a number
 		if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
@@ -460,7 +504,13 @@ select_from_list() {
 		elif [[ "$allow_custom" == "true" ]]; then
 			# Selected custom input
 			while true; do
-				read -p "$custom_prompt: " custom_value
+				local custom_value
+				if ! read -t 30 -p "$custom_prompt: " custom_value; then
+					print_warning "Input timeout or EOF detected, using first option as default: ${options[0]}" >&2
+					echo "${options[0]}"
+					return 0
+				fi
+				
 				if [[ -z "$custom_value" ]]; then
 					print_warning "Input cannot be empty" >&2
 					continue
@@ -538,6 +588,56 @@ validate_parameters() {
 
 # Interactive parameter input
 get_user_input() {
+	# In dry-run mode, use default values and skip interactive input
+	if [[ "$DRY_RUN" == "true" ]]; then
+		print_info "Dry-run mode: using default values for missing parameters"
+		
+		# Set default StorageClass if not provided
+		if [[ -z "$STORAGE_CLASS" ]]; then
+			local available_sc
+			available_sc=$(kubectl get storageclass -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+			if [[ -n "$available_sc" ]]; then
+				STORAGE_CLASS="$available_sc"
+				print_info "Using default StorageClass: $STORAGE_CLASS"
+			else
+				STORAGE_CLASS="local-path"
+				print_info "Using fallback StorageClass: $STORAGE_CLASS"
+			fi
+		fi
+		
+		# Set default Namespace if not provided
+		if [[ -z "$NAMESPACE" ]]; then
+			NAMESPACE="default"
+			print_info "Using default Namespace: $NAMESPACE"
+		fi
+		
+		# Set default MySQL version if not provided
+		if [[ -z "$MYSQL_VERSION" ]]; then
+			MYSQL_VERSION="8.0.41"
+			print_info "Using default MySQL Version: $MYSQL_VERSION"
+		else
+			# In dry-run mode, validate provided MySQL version
+			if ! validate_mysql_version "$MYSQL_VERSION"; then
+				print_error "Invalid MySQL version specified: $MYSQL_VERSION"
+				print_info "Available MySQL versions:"
+				get_mysql_versions | while IFS= read -r version; do
+					echo "  - $version"
+				done
+				exit 1
+			fi
+			print_info "Using specified MySQL Version: $MYSQL_VERSION"
+		fi
+		
+		print_success "Dry-run mode parameter configuration:"
+		print_success "  StorageClass: $STORAGE_CLASS"
+		print_success "  Namespace: $NAMESPACE"
+		print_success "  NodePort IP: $NODEPORT_IP"
+		print_success "  MySQL Version: $MYSQL_VERSION"
+		print_success "  Router Version: $MYSQL_VERSION (automatically matches MySQL version)"
+		echo
+		return 0
+	fi
+	
 	# Check if interactive input is needed
 	if check_required_parameters; then
 		print_info "All required parameters provided via command line, skipping interactive configuration"
@@ -663,6 +763,36 @@ prepare_yaml_files() {
 	print_success "YAML files preparation completed"
 }
 
+# Generate random identifier for Kubernetes resource names
+# Generates lowercase alphanumeric string (6-8 characters) compliant with Kubernetes naming conventions
+generate_random_identifier() {
+	local length="${1:-6}"  # Default length is 6
+	
+	# Ensure length is between 6-8
+	if [[ "$length" -lt 6 || "$length" -gt 8 ]]; then
+		length=6
+	fi
+	
+	# Generate random string using lowercase letters and numbers
+	# Ensure it starts with a letter (Kubernetes requirement)
+	local first_char
+	first_char=$(printf "%c" $((97 + RANDOM % 26)))  # a-z
+	
+	local remaining_chars=""
+	for ((i=1; i<length; i++)); do
+		local char_type=$((RANDOM % 36))
+		if [[ $char_type -lt 26 ]]; then
+			# Letter (a-z)
+			remaining_chars+=$(printf "%c" $((97 + char_type)))
+		else
+			# Number (0-9)
+			remaining_chars+=$(printf "%c" $((48 + char_type - 26)))
+		fi
+	done
+	
+	echo "${first_char}${remaining_chars}"
+}
+
 # Escape special characters for sed replacement text
 escape_sed_replacement() {
 	local input="$1"
@@ -681,12 +811,22 @@ escape_sed_replacement() {
 replace_yaml_parameters() {
 	print_info "Starting parameter replacement in YAML files..."
 
+	# Generate random identifiers for resource names
+	local mysql_random_id=$(generate_random_identifier 6)
+	local router_random_id=$(generate_random_identifier 6)
+	
+	print_info "Generated random identifiers:"
+	print_info "  MySQL UnitSet identifier: $mysql_random_id"
+	print_info "  MySQL Router UnitSet identifier: $router_random_id"
+
 	# Escape special characters to avoid sed errors
 	local escaped_namespace=$(escape_sed_replacement "$NAMESPACE")
 	local escaped_storage_class=$(escape_sed_replacement "$STORAGE_CLASS")
 	local escaped_nodeport_ip=$(escape_sed_replacement "$NODEPORT_IP")
 	local escaped_mysql_version=$(escape_sed_replacement "$MYSQL_VERSION")
 	local escaped_router_version=$(escape_sed_replacement "$MYSQL_VERSION")
+	local escaped_mysql_random_id=$(escape_sed_replacement "$mysql_random_id")
+	local escaped_router_random_id=$(escape_sed_replacement "$router_random_id")
 
 	# Replace NAMESPACE environment variable value in gen-secret.yaml
 	# Use pipe delimiter to avoid conflicts with common characters
@@ -696,17 +836,29 @@ replace_yaml_parameters() {
 	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-us.yaml"
 	sed_inplace 's|storageClassName: lvm-localpv|storageClassName: '"${escaped_storage_class}"'|g' "$TEMP_DIR/mysql-us.yaml"
 	sed_inplace 's|version: [0-9][0-9.]*|version: '"${escaped_mysql_version}"'|g' "$TEMP_DIR/mysql-us.yaml"
+	# Replace xxx with random identifier in mysql UnitSet name
+	sed_inplace 's|demo-mysql-xxx|demo-mysql-'"${escaped_mysql_random_id}"'|g' "$TEMP_DIR/mysql-us.yaml"
 
 	# Replace namespace and service references in mysql-group-replication.yaml
 	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-group-replication.yaml"
 	sed_inplace 's|\.default|.'"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-group-replication.yaml"
+	# Replace xxx with same random identifier in MysqlGroupReplication name and service references
+	sed_inplace 's|demo-mysql-xxx|demo-mysql-'"${escaped_mysql_random_id}"'|g' "$TEMP_DIR/mysql-group-replication.yaml"
 
 	# Replace parameters in mysql-router-us.yaml
 	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
 	sed_inplace 's|upm.api/nodeport-ip: [0-9][0-9.]*|upm.api/nodeport-ip: '"${escaped_nodeport_ip}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
 	sed_inplace 's|version: [0-9][0-9.]*|version: '"${escaped_router_version}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
+	# Replace yyy with random identifier in mysql-router UnitSet name
+	sed_inplace 's|demo-mysql-router-yyy|demo-mysql-router-'"${escaped_router_random_id}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
+	# Replace xxx with mysql random identifier in MYSQL_SERVICE_NAME reference
+	sed_inplace 's|demo-mysql-xxx|demo-mysql-'"${escaped_mysql_random_id}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
 
 	print_success "Parameter replacement completed"
+	print_success "Resource names with random identifiers:"
+	print_success "  MySQL UnitSet: demo-mysql-${mysql_random_id}"
+	print_success "  MySQL Router UnitSet: demo-mysql-router-${router_random_id}"
+	print_success "  MysqlGroupReplication: demo-mysql-${mysql_random_id}"
 }
 
 # Apply YAML file

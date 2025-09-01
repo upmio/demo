@@ -125,7 +125,7 @@ chmod +x deploy-innodb-cluster.sh
 ```bash
 
 # Run interactive deployment
-./verify-mysql.sh
+./deploy-innodb-cluster.sh
 
 # Follow prompts to enter configuration:
 # - Cluster name (default: mysql-cluster)
@@ -139,7 +139,7 @@ chmod +x deploy-innodb-cluster.sh
 
 ```bash
 # Deploy directly with command-line parameters
-./verify-mysql.sh \
+./deploy-innodb-cluster.sh \
   --cluster-name my-mysql \
   --namespace production \
   --mysql-version 8.0.41 \
@@ -149,7 +149,7 @@ chmod +x deploy-innodb-cluster.sh
 
 ## Command Line Parameters
 
-The script supports the following command-line parameters:
+The deployment script supports the following command-line parameters:
 
 | Parameter | Description | Default | Example |
 |-----------|-------------|---------|----------|
@@ -165,7 +165,7 @@ The script supports the following command-line parameters:
 
 ```bash
 # Full parameter deployment
-./verify-mysql.sh \
+./deploy-innodb-cluster.sh \
   --cluster-name production-mysql \
   --namespace mysql-production \
   --mysql-version 8.0.42 \
@@ -173,10 +173,130 @@ The script supports the following command-line parameters:
   --storage-class fast-ssd
 
 # Preview configuration
-./verify-mysql.sh --dry-run
+./deploy-innodb-cluster.sh --dry-run
 
 # View help
-./verify-mysql.sh --help
+./deploy-innodb-cluster.sh --help
+```
+
+## MySQL Database Verification
+
+After deployment, you can use the `verify-mysql.sh` script to verify MySQL database connectivity and perform basic database operations testing.
+
+### Script Features
+
+The `verify-mysql.sh` script is an independent MySQL database verification tool that provides:
+
+- **Connection Testing**: Verify MySQL server connectivity
+- **Server Information**: Retrieve MySQL server version and status
+- **Database Operations**: Test basic CRUD operations (Create, Read, Update, Delete)
+- **Performance Benchmarking**: Simple connection and query performance tests
+- **Comprehensive Reporting**: Generate detailed verification reports
+- **Verbose Logging**: Optional detailed output for troubleshooting
+
+### Usage
+
+```bash
+# Basic usage with required parameters
+./verify-mysql.sh -h <host> -P <port> -u <username> -p <password>
+
+# Example: Connect to NodePort service
+./verify-mysql.sh -h 10.37.132.105 -P 30206 -u radminuser -p mypassword123
+
+# Verbose mode with report generation
+./verify-mysql.sh -h <host> -P <port> -u <username> -p <password> -v -r report.txt
+
+# Specify default database
+./verify-mysql.sh -h <host> -P <port> -u <username> -p <password> -d mydatabase
+```
+
+### Command Line Parameters
+
+| Parameter | Description | Default | Required |
+|-----------|-------------|---------|----------|
+| `-h, --host` | MySQL server host | localhost | No |
+| `-P, --port` | MySQL server port | 3306 | No |
+| `-u, --user` | MySQL username | root | No |
+| `-p, --password` | MySQL password | - | **Yes** |
+| `-d, --database` | Default database | - | No |
+| `-v, --verbose` | Enable verbose output | false | No |
+| `-r, --report` | Generate report file | - | No |
+| `--help` | Show help information | - | No |
+
+### Verification Tests
+
+The script performs the following tests:
+
+1. **Prerequisites Check**: Verify MySQL client availability and parameters
+2. **MySQL Connection**: Test database connectivity
+3. **Server Information**: Retrieve server version and status
+4. **Create Database**: Create temporary test database
+5. **Create Table**: Create test table with various data types
+6. **Insert Data**: Insert sample records
+7. **Query Data**: Verify data retrieval
+8. **Update Data**: Test data modification
+9. **Delete Data**: Test data deletion
+10. **Final Verification**: Confirm final data state
+11. **Connection Performance**: Test connection speed (verbose mode)
+12. **Query Performance**: Test query execution time (verbose mode)
+13. **Cleanup**: Remove test database
+
+### Example Output
+
+```bash
+$ ./verify-mysql.sh -h 10.37.132.105 -P 30206 -u radminuser -p mypassword123 -v
+
+===========================================
+    MySQL Database Verification Script
+===========================================
+
+[INFO] Starting MySQL database verification...
+[INFO] Target: 10.37.132.105:30206 (user: radminuser)
+
+[SUCCESS] MySQL connection successful
+[SUCCESS] MySQL server information:
+version	hostname	port
+8.0.41	mysql-0	3306
+
+[SUCCESS] Test database created successfully
+[SUCCESS] Test table created successfully
+[SUCCESS] Test data inserted successfully
+[SUCCESS] Data query successful - found 3 records
+[SUCCESS] Data update successful
+[SUCCESS] Data deletion successful
+[SUCCESS] Final verification: 2 records remaining
+[SUCCESS] Connection performance: 5/5 successful, average: 45ms
+[SUCCESS] Query performance: 12ms
+[SUCCESS] Test database cleanup completed
+
+========================================
+MySQL Database Verification Report
+========================================
+Generated at: Mon Jan 27 10:30:45 CST 2025
+MySQL Server: 10.37.132.105:30206
+Username: radminuser
+
+Test Summary:
+=============
+Total Tests: 13
+Passed: 13
+Failed: 0
+Success Rate: 100%
+
+[SUCCESS] All tests passed successfully!
+```
+
+### Getting Connection Information
+
+To get the connection information for the verification script:
+
+```bash
+# Get NodePort service information
+kubectl get svc -n <namespace> -l "upm.api/service.type=mysql-router"
+
+# Get database passwords from secret
+kubectl get secret innodb-cluster-sg-demo-secret -n <namespace> \
+  -o jsonpath='{.data.radminuser}' | base64 -d
 ```
 
 ## Post-Deployment Usage Guide

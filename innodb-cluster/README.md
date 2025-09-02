@@ -128,7 +128,6 @@ chmod +x deploy-innodb-cluster.sh
 ./deploy-innodb-cluster.sh
 
 # Follow prompts to enter configuration:
-# - Cluster name (default: mysql-cluster)
 # - Namespace (default: default)
 # - MySQL version (default: 8.0.41)
 # - Storage size (default: 20Gi)
@@ -301,10 +300,10 @@ After deployment, the script will display connection information:
 
 ```bash
 # Connect via MySQL Router (Recommended)
-mysql -h <NodePort-IP> -P <NodePort-Port> -u root -p
+mysql -h <NodePort-IP> -P <NodePort-Port> -u radminuser -p
 
 # Example
-mysql -h 10.37.132.105 -P 30306 -u root -p
+mysql -h 10.37.132.105 -P 30306 -u radminuser -p
 ```
 
 ### Check Cluster Status
@@ -357,26 +356,32 @@ The script automatically creates the following database users:
 | Username | Password | Privileges | Purpose |
 |----------|----------|------------|----------|
 | `root` | Auto-generated | Super admin | Database management |
-| `mysql_router` | Auto-generated | Routing privileges | MySQL Router connect |
+| `radminuser` | Auto-generated | Routing privileges | MySQL Router connect |
 | `monitor` | Auto-generated | Monitoring privileges | Prometheus monitor |
+| `replication` | Auto-generated | Replication privileges | Group replication |
 
 ### Retrieve Passwords
 
 ```bash
 # Get root password
-kubectl get secret mysql-cluster-secret \
+kubectl get secret innodb-cluster-sg-demo-secret \
   -n <namespace> \
-  -o jsonpath='{.data.root-password}' | base64 -d
+  -o jsonpath='{.data.root}' | base64 -d
 
-# Get router password
-kubectl get secret mysql-cluster-secret \
+# Get radminuser password
+kubectl get secret innodb-cluster-sg-demo-secret \
   -n <namespace> \
-  -o jsonpath='{.data.router-password}' | base64 -d
+  -o jsonpath='{.data.radminuser}' | base64 -d
 
 # Get monitor password
-kubectl get secret mysql-cluster-secret \
+kubectl get secret innodb-cluster-sg-demo-secret \
   -n <namespace> \
-  -o jsonpath='{.data.monitor-password}' | base64 -d
+  -o jsonpath='{.data.monitor}' | base64 -d
+
+# Get replication password
+kubectl get secret innodb-cluster-sg-demo-secret \
+  -n <namespace> \
+  -o jsonpath='{.data.replication}' | base64 -d
 ```
 
 ## Monitoring Integration
@@ -526,11 +531,7 @@ kubectl describe unitset <unitset-name> \
 ### Complete Cleanup
 
 ```bash
-# Delete all related resources
-./deploy-mysql-cluster.sh --cleanup \
-  --namespace mysql-cluster
-
-# Or manual deletion
+# Manual deletion
 kubectl delete namespace mysql-cluster
 ```
 
@@ -611,7 +612,7 @@ level=INFO
 [metadata_cache:bootstrap]
 router_id=1
 bootstrap_server_addresses=mysql-cluster:3306
-user=mysql_router
+user=radminuser
 metadata_cluster=prodCluster
 ttl=0.5
 

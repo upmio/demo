@@ -53,11 +53,15 @@ UPM simplifies the deployment, scaling, and operations of complex services.
 ### Prerequisites
 
 - **Kubernetes Cluster** (v1.29+)
-- **Helm** (v3.8+)
+- **Helm** (v3.16+)
 - **kubectl** command-line tool
-- **Sufficient cluster resources** (recommended 4 cores, 8GB+ memory)
+- **Sufficient cluster resources** (recommended 4+ cores, 8GB+ memory, 2+ workload nodes)
 
 ### 🔧 Installation Steps
+
+**Description:**
+
+The `install-operator.sh` script is an automated installation tool that deploys the essential UPM operators (Unit Operator and Compose Operator) to your Kubernetes cluster. These operators enable declarative management and orchestration of MySQL components and services.
 
 ```bash
 curl -sSL \
@@ -65,17 +69,15 @@ curl -sSL \
   -o install-operator.sh
 chmod +x install-operator.sh
 ./install-operator.sh
-
-# Check operator status
-helm list -n upm-system
-
-# Check UPM component status
-kubectl get pods -n upm-system
 ```
 
 ## 🔨 Deployment Examples
 
 ### MySQL InnoDB Cluster High Availability
+
+**Description:**
+
+The `deploy-innodb-cluster.sh` script is an automated deployment tool that sets up a production-ready MySQL InnoDB Cluster on Kubernetes. It creates a 3-node high-availability cluster with MySQL Router for load balancing, automatic failover capabilities, and persistent storage configuration.
 
 ```bash
 # Deploy MySQL InnoDB Cluster
@@ -84,8 +86,13 @@ curl -sSL \
   -o deploy-innodb-cluster.sh
 chmod +x deploy-innodb-cluster.sh
 ./deploy-innodb-cluster.sh
+```
 
+**Verification:**
 
+The `verify-mysql.sh` script is a comprehensive testing tool designed to validate the MySQL InnoDB Cluster deployment. It performs connection tests, failover scenarios, and data consistency checks to ensure your cluster is functioning correctly.
+
+```bash
 # Verify deployment
 curl -sSL \
   https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/verify-mysql.sh \

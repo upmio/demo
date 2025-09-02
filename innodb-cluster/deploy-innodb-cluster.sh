@@ -578,67 +578,39 @@ validate_parameters() {
 
 # Interactive parameter input
 get_user_input() {
-	# In dry-run mode, use default values and skip interactive input
-	if [[ "$DRY_RUN" == "true" ]]; then
-		print_info "Dry-run mode: using default values for missing parameters"
-		
-		# Set default StorageClass if not provided
-		if [[ -z "$STORAGE_CLASS" ]]; then
-			local available_sc
-			available_sc=$(kubectl get storageclass -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-			if [[ -n "$available_sc" ]]; then
-				STORAGE_CLASS="$available_sc"
-				print_info "Using default StorageClass: $STORAGE_CLASS"
-			else
-				STORAGE_CLASS="local-path"
-				print_info "Using fallback StorageClass: $STORAGE_CLASS"
-			fi
-		fi
-		
-		# Set default Namespace if not provided
-		if [[ -z "$NAMESPACE" ]]; then
-			NAMESPACE="default"
-			print_info "Using default Namespace: $NAMESPACE"
-		fi
-		
-		# Set default MySQL version if not provided
-		if [[ -z "$MYSQL_VERSION" ]]; then
-			MYSQL_VERSION="8.0.41"
-			print_info "Using default MySQL Version: $MYSQL_VERSION"
-		else
-			# In dry-run mode, validate provided MySQL version
-			if ! validate_mysql_version "$MYSQL_VERSION"; then
-				print_error "Invalid MySQL version specified: $MYSQL_VERSION"
-				print_info "Available MySQL versions:"
-				get_mysql_versions | while IFS= read -r version; do
-					echo "  - $version"
-				done
-				exit 1
-			fi
-			print_info "Using specified MySQL Version: $MYSQL_VERSION"
-		fi
-		
-		print_success "Dry-run mode parameter configuration:"
-		print_success "  StorageClass: $STORAGE_CLASS"
-		print_success "  Namespace: $NAMESPACE"
-		print_success "  NodePort IP: $NODEPORT_IP"
-		print_success "  MySQL Version: $MYSQL_VERSION"
-		print_success "  Router Version: $MYSQL_VERSION (automatically matches MySQL version)"
-		echo
-		return 0
+	# Display current parameter status
+	print_info "Current parameter configuration:"
+	if [[ -n "$STORAGE_CLASS" ]]; then
+		print_success "  StorageClass: $STORAGE_CLASS (provided via command line)"
+	else
+		print_info "  StorageClass: Not specified, will be configured interactively"
 	fi
 	
-	# Check if interactive input is needed
-	if check_required_parameters; then
+	if [[ -n "$NAMESPACE" ]]; then
+		print_success "  Namespace: $NAMESPACE (provided via command line)"
+	else
+		print_info "  Namespace: Not specified, will be configured interactively"
+	fi
+	
+	if [[ -n "$MYSQL_VERSION" ]]; then
+		print_success "  MySQL Version: $MYSQL_VERSION (provided via command line)"
+	else
+		print_info "  MySQL Version: Not specified, will be configured interactively"
+	fi
+	
+	print_success "  NodePort IP: $NODEPORT_IP (auto-detected)"
+	echo
+	
+	# Check if all parameters are already provided
+	local need_interaction=false
+	if [[ -z "$STORAGE_CLASS" ]] || [[ -z "$NAMESPACE" ]] || [[ -z "$MYSQL_VERSION" ]]; then
+		need_interaction=true
+	fi
+	
+	if [[ "$need_interaction" == "false" ]]; then
 		print_info "All required parameters provided via command line, skipping interactive configuration"
-
-		# Set default version if not specified
-		if [[ -z "$MYSQL_VERSION" ]]; then
-			MYSQL_VERSION="8.0.41"
-		fi
-
 		validate_parameters
-		print_success "Non-interactive mode parameter configuration:"
+		print_success "Parameter configuration completed:"
 		print_success "  StorageClass: $STORAGE_CLASS"
 		print_success "  Namespace: $NAMESPACE"
 		print_success "  NodePort IP: $NODEPORT_IP"
@@ -648,49 +620,57 @@ get_user_input() {
 		return 0
 	fi
 
-	print_info "Starting interactive configuration..."
+	print_info "Starting interactive configuration for missing parameters..."
 
-	# Get StorageClass
-	local available_sc
-	available_sc=$(kubectl get storageclass -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | tr ' ' '\n' | sort)
+	# Get StorageClass (only if not provided)
+	if [[ -z "$STORAGE_CLASS" ]]; then
+		local available_sc
+		available_sc=$(kubectl get storageclass -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | tr ' ' '\n' | sort)
 
-	if [[ -z "$available_sc" ]]; then
-		print_error "No available StorageClass found in cluster"
-		print_info "Please install StorageClass first, for example:"
-		print_info "kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml"
-		exit 1
+		if [[ -z "$available_sc" ]]; then
+			print_error "No available StorageClass found in cluster"
+			print_info "Please install StorageClass first, for example:"
+			print_info "kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml"
+			exit 1
+		fi
+
+		# Convert StorageClass to array
+		local sc_array=()
+		while IFS= read -r line; do
+			[[ -n "$line" ]] && sc_array+=("$line")
+		done <<<"$available_sc"
+
+		STORAGE_CLASS=$(select_from_list "Select StorageClass:" "${sc_array[@]}")
+	else
+		print_info "StorageClass already specified: $STORAGE_CLASS"
 	fi
 
-	# Convert StorageClass to array
-	local sc_array=()
-	while IFS= read -r line; do
-		[[ -n "$line" ]] && sc_array+=("$line")
-	done <<<"$available_sc"
+	# Get Namespace (only if not provided)
+	if [[ -z "$NAMESPACE" ]]; then
+		local available_ns
+		available_ns=$(kubectl get namespace -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | tr ' ' '\n' | sort)
 
-	STORAGE_CLASS=$(select_from_list "Select StorageClass:" "${sc_array[@]}")
+		if [[ -z "$available_ns" ]]; then
+			print_error "Unable to get Namespace list"
+			exit 1
+		fi
 
-	# Get Namespace
-	local available_ns
-	available_ns=$(kubectl get namespace -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | tr ' ' '\n' | sort)
+		# Convert Namespace to array and add custom input option
+		local ns_array=()
+		while IFS=' ' read -r -a temp_array; do
+			for item in "${temp_array[@]}"; do
+				[[ -n "$item" ]] && ns_array+=("$item")
+			done
+		done <<<"$available_ns"
 
-	if [[ -z "$available_ns" ]]; then
-		print_error "Unable to get Namespace list"
-		exit 1
+		NAMESPACE=$(select_from_list "Select Namespace:" "${ns_array[@]}" "Please enter custom Namespace name" "true")
+	else
+		print_info "Namespace already specified: $NAMESPACE"
 	fi
-
-	# Convert Namespace to array and add custom input option
-	local ns_array=()
-	while IFS=' ' read -r -a temp_array; do
-		for item in "${temp_array[@]}"; do
-			[[ -n "$item" ]] && ns_array+=("$item")
-		done
-	done <<<"$available_ns"
-
-	NAMESPACE=$(select_from_list "Select Namespace:" "${ns_array[@]}" "Please enter custom Namespace name" "true")
 
 	# NodePort IP will be auto-detected, no interactive input needed
 
-	# Select MySQL version
+	# Select MySQL version (only if not provided)
 	if [[ -z "$MYSQL_VERSION" ]]; then
 		local mysql_versions
 		mysql_versions=$(get_mysql_versions)
@@ -709,6 +689,17 @@ get_user_input() {
 		else
 			print_warning "Unable to get MySQL version list, using default version 8.0.41"
 			MYSQL_VERSION="8.0.41"
+		fi
+	else
+		print_info "MySQL Version already specified: $MYSQL_VERSION"
+		# Validate provided MySQL version
+		if ! validate_mysql_version "$MYSQL_VERSION"; then
+			print_error "Invalid MySQL version specified: $MYSQL_VERSION"
+			print_info "Available MySQL versions:"
+			get_mysql_versions | while IFS= read -r version; do
+				echo "  - $version"
+			done
+			exit 1
 		fi
 	fi
 

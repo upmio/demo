@@ -1158,44 +1158,16 @@ show_usage_info() {
 	echo "   kubectl get unitset -n $NAMESPACE"
 	echo "   kubectl get pods -n $NAMESPACE"
 	echo
-	echo "3. View logs:"
-	echo "   kubectl logs -n $NAMESPACE -l upm.api/service.type=mysql"
-	echo "   kubectl logs -n $NAMESPACE -l upm.api/service.type=mysql-router"
-	echo
-	echo "4. Verify deployment - Use MySQL database verification script for comprehensive check:"
+	echo "3. Verify deployment - Use MySQL database verification script for comprehensive check:"
 	echo "   The verify-mysql.sh script is an independent MySQL database verification tool designed"
 	echo "   to validate MySQL services deployed by deploy-innodb-cluster.sh with DBA-level output"
 	echo
 	echo "   Download and run verification script:"
 	echo "   curl -sSL https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/verify-mysql.sh -o verify-mysql.sh"
 	echo "   chmod +x verify-mysql.sh"
-	echo "   ./verify-mysql.sh -h <mysql-host> -P 3306 -u root -p <password> -v"
 	echo
-	echo "   Example usage with deployed MySQL service:"
-	echo "   # Get MySQL service endpoint first:"
-	echo "   kubectl get svc -n $NAMESPACE"
-	echo "   # Then run verification (replace <service-ip> with actual IP):"
-	echo "   ./verify-mysql.sh -h <service-ip> -P 3306 -u root -p <root-password> -v -r report.txt"
-	echo
-	echo "   Verification script features include:"
-	echo "   - MySQL connection and authentication testing"
-	echo "   - Comprehensive server information collection (version, storage engines, variables)"
-	echo "   - InnoDB Cluster status and configuration verification"
-	echo "   - Database CRUD operations testing with transaction support"
-	echo "   - Performance benchmarking (connection, query, transaction performance)"
-	echo "   - DBA-level technical output with SQL command display"
-	echo "   - Detailed verification report generation"
-	echo "   - Cluster features testing (read-write separation, consistency)"
-	echo
-	echo "   Script parameters:"
-	echo "   -h, --host HOST        MySQL server host (required)"
-	echo "   -P, --port PORT        MySQL server port (default: 3306)"
-	echo "   -u, --user USERNAME    MySQL username (default: root)"
-	echo "   -p, --password PASS    MySQL password (required)"
-	echo "   -d, --database DB      Default database to use (optional)"
-	echo "   -v, --verbose          Enable verbose DBA-level output"
-	echo "   -r, --report FILE      Generate detailed report to file"
-	echo
+	echo "   # Run verification script:"
+	echo "   ./verify-mysql.sh -h $NODEPORT_IP -P $nodeport -u radminuser -p $mysql_password -v -r mysql-verification-report.txt"
 	echo "   View verification script help:"
 	echo "   ./verify-mysql.sh --help"
 	echo

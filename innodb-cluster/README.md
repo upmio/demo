@@ -140,10 +140,8 @@ chmod +x deploy-innodb-cluster.sh
 ```bash
 # Deploy directly with command-line parameters
 ./deploy-innodb-cluster.sh \
-  --cluster-name my-mysql \
   --namespace production \
   --mysql-version 8.0.41 \
-  --storage-size 50Gi \
   --storage-class fast-ssd
 ```
 
@@ -153,10 +151,8 @@ The deployment script supports the following command-line parameters:
 
 | Parameter | Description | Default | Example |
 |-----------|-------------|---------|----------|
-| `--cluster-name` | Cluster name | mysql-cluster | `--cluster-name my-mysql` |
 | `--namespace` | Deployment namespace | default | `--namespace mysql-prod` |
 | `--mysql-version` | MySQL version | 8.0.41 | `--mysql-version 8.0.42` |
-| `--storage-size` | Storage size per node | 20Gi | `--storage-size 50Gi` |
 | `--storage-class` | StorageClass name | auto-detect | `--storage-class ssd` |
 | `--dry-run` | Preview mode, generate config | false | `--dry-run` |
 | `--help` | Display help information | - | `--help` |
@@ -166,10 +162,8 @@ The deployment script supports the following command-line parameters:
 ```bash
 # Full parameter deployment
 ./deploy-innodb-cluster.sh \
-  --cluster-name production-mysql \
   --namespace mysql-production \
   --mysql-version 8.0.42 \
-  --storage-size 100Gi \
   --storage-class fast-ssd
 
 # Preview configuration

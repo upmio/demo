@@ -57,7 +57,7 @@ UPM simplifies the deployment, scaling, and operations of complex services.
 - **kubectl** command-line tool
 - **Sufficient cluster resources** (recommended 4 cores, 8GB+ memory)
 
-### 1. Install Unit Operator and Compose Operator
+### 🔧 Installation Steps
 
 ```bash
 curl -sSL \
@@ -65,11 +65,7 @@ curl -sSL \
   -o install-operator.sh
 chmod +x install-operator.sh
 ./install-operator.sh
-```
 
-### 2. Verify Installation
-
-```bash
 # Check operator status
 helm list -n upm-system
 
@@ -77,7 +73,7 @@ helm list -n upm-system
 kubectl get pods -n upm-system
 ```
 
-## 💡 Deployment Examples
+## 🔨 Deployment Examples
 
 ### MySQL InnoDB Cluster High Availability
 

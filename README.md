@@ -98,7 +98,7 @@ curl -sSL \
   https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/verify-mysql.sh \
   -o verify-mysql.sh
 chmod +x verify-mysql.sh
-./verify-mysql.sh
+./verify-mysql.sh -h <ip_addr> -P <port> -u <username> -p <password>
 ```
 
 **Features:**

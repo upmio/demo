@@ -988,7 +988,7 @@ main() {
     # Exit with appropriate code
     if [[ $FAIL_COUNT -eq 0 ]]; then
         echo
-        echo "✅ All tests passed successfully! ($passed_tests/$total_tests)"
+        echo "✅ All tests passed successfully! ($PASS_COUNT/$TEST_COUNT)"
         exit 0
     else
         echo

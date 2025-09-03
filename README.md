@@ -50,6 +50,12 @@ UPM simplifies the deployment, scaling, and operations of complex services.
 
 ## 🚀 Quick Start
 
+**Demo Video:**
+
+Watch the complete deployment and verification process in action:
+
+[![asciicast](https://asciinema.org/a/737562.svg)](https://asciinema.org/a/737562)
+
 ### Prerequisites
 
 - **Kubernetes Cluster** (v1.29+)

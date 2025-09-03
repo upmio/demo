@@ -490,11 +490,6 @@ show_summary() {
     print_info "• Installation log: $LOG_FILE"
 
     print_separator
-    print_info "Next steps:"
-    print_info "1. Check all component status: kubectl get all -n upm-system"
-    print_info "2. Install upm-packages: Refer to README documentation"
-    print_info "3. Start deploying services: Refer to UPM documentation for service deployment"
-    print_separator
 }
 
 # Post-installation environment checks

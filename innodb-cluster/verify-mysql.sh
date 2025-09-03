@@ -3,7 +3,23 @@
 # MySQL Database Verification Script
 # Independent MySQL database connection and operations verification tool
 
-set -e
+# Enable strict error handling but allow controlled error handling in functions
+set -eE
+set -o pipefail
+
+# Error handler function
+error_handler() {
+    local line_no=$1
+    local error_code=$2
+    echo -e "\033[0;31m[ERROR]\033[0m Script failed at line $line_no with exit code $error_code" >&2
+    if [[ -n "$REPORT_FILE" ]]; then
+        echo "[FATAL ERROR] $(get_log_timestamp) Script failed at line $line_no with exit code $error_code" >> "$REPORT_FILE"
+    fi
+    exit $error_code
+}
+
+# Set error trap
+trap 'error_handler ${LINENO} $?' ERR
 
 # Color definitions
 RED='\033[0;31m'
@@ -27,6 +43,40 @@ TEST_RESULTS=()
 TEST_COUNT=0
 PASS_COUNT=0
 FAIL_COUNT=0
+
+# Cross-platform time function
+get_timestamp_ms() {
+    # Temporarily disable error handling for this function
+    set +e
+    # Try nanosecond precision first (macOS and newer Linux)
+    local ns_time
+    ns_time=$(date +%s%N 2>/dev/null)
+    if [[ $? -eq 0 && "$ns_time" != *"N"* ]]; then
+        # Nanosecond format is supported
+        echo $((ns_time / 1000000))
+    else
+        # Fallback to millisecond precision (older Linux systems)
+        echo $(($(date +%s) * 1000))
+    fi
+    # Re-enable error handling
+    set -e
+}
+
+# Safe date function for logging
+get_log_timestamp() {
+    # Temporarily disable error handling for this function
+    set +e
+    local timestamp
+    timestamp=$(date "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+    if [[ $? -eq 0 ]]; then
+        echo "$timestamp"
+    else
+        # Fallback to basic date format
+        echo "$(date 2>/dev/null || echo 'unknown-time')"
+    fi
+    # Re-enable error handling
+    set -e
+}
 
 # Help information
 show_help() {
@@ -107,7 +157,7 @@ log_step_start() {
     CURRENT_STEP=$((CURRENT_STEP + 1))
     echo -e "${BLUE}[$CURRENT_STEP/$TOTAL_STEPS]${NC} $step_name..."
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[STEP $CURRENT_STEP/$TOTAL_STEPS] $(date '+%Y-%m-%d %H:%M:%S') Starting: $step_name" >> "$REPORT_FILE"
+        echo "[STEP $CURRENT_STEP/$TOTAL_STEPS] $(get_log_timestamp) Starting: $step_name" >> "$REPORT_FILE"
     fi
 }
 
@@ -115,7 +165,7 @@ log_step_success() {
     local result="$1"
     echo -e "${GREEN}  ✓${NC} $result"
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[SUCCESS] $(date '+%Y-%m-%d %H:%M:%S') $result" >> "$REPORT_FILE"
+        echo "[SUCCESS] $(get_log_timestamp) $result" >> "$REPORT_FILE"
     fi
 }
 
@@ -123,7 +173,7 @@ log_step_warning() {
     local result="$1"
     echo -e "${YELLOW}  ⚠${NC} $result"
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[WARNING] $(date '+%Y-%m-%d %H:%M:%S') $result" >> "$REPORT_FILE"
+        echo "[WARNING] $(get_log_timestamp) $result" >> "$REPORT_FILE"
     fi
 }
 
@@ -131,64 +181,64 @@ log_step_error() {
     local result="$1"
     echo -e "${RED}  ✗${NC} $result"
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $result" >> "$REPORT_FILE"
+        echo "[ERROR] $(get_log_timestamp) $result" >> "$REPORT_FILE"
     fi
 }
 
 # Legacy logging functions for compatibility
 log_info() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[INFO] $(get_log_timestamp) $1" >> "$REPORT_FILE"
     fi
 }
 
 log_success() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[SUCCESS] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[SUCCESS] $(get_log_timestamp) $1" >> "$REPORT_FILE"
     fi
 }
 
 log_warning() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[WARNING] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[WARNING] $(get_log_timestamp) $1" >> "$REPORT_FILE"
     fi
 }
 
 log_error() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[ERROR] $(get_log_timestamp) $1" >> "$REPORT_FILE"
     fi
 }
 
 log_verbose() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[VERBOSE] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[VERBOSE] $(get_log_timestamp) $1" >> "$REPORT_FILE"
     fi
 }
 
 # Report-only logging functions (detailed technical information)
 log_dba_info() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[DBA INFO] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[DBA INFO] $(get_log_timestamp) $1" >> "$REPORT_FILE"
     fi
 }
 
 log_sql() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[SQL] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[SQL] $(get_log_timestamp) $1" >> "$REPORT_FILE"
     fi
 }
 
 log_technical() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[TECHNICAL] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[TECHNICAL] $(get_log_timestamp) $1" >> "$REPORT_FILE"
     fi
 }
 
 # Report-only detailed output function
 log_report_details() {
     if [[ -n "$REPORT_FILE" ]]; then
-        echo "[DETAILS] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$REPORT_FILE"
+        echo "[DETAILS] $(get_log_timestamp) $1" >> "$REPORT_FILE"
         # If additional content is provided via stdin, append it to report
         if [[ -p /dev/stdin ]]; then
             while IFS= read -r line; do
@@ -380,276 +430,6 @@ get_server_info() {
     fi
 }
 
-# Test database operations
-test_database_operations() {
-    log_step_start "Database Operations"
-    log_dba_info "Performing comprehensive database CRUD operations test"
-    
-    local mysql_cmd
-    mysql_cmd=$(build_mysql_cmd)
-    
-    local operations_passed=0
-    local total_operations=6
-    
-    # Test 1: Create test database
-    log_dba_info "Verifying database creation privileges and storage engine functionality"
-    
-    local create_db_sql="CREATE DATABASE IF NOT EXISTS $TEST_DATABASE DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-    log_sql "Database Creation: $create_db_sql"
-    
-    if echo "$create_db_sql" | eval "$mysql_cmd" 2>/dev/null; then
-        ((operations_passed++))
-        log_technical "Database '$TEST_DATABASE' created with UTF8MB4 character set"
-        
-        # Get database information
-        local db_info_sql="SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '$TEST_DATABASE';"
-        log_sql "Database Info Query: $db_info_sql"
-        local db_details
-        if db_details=$(echo "$db_info_sql" | eval "$mysql_cmd" 2>/dev/null); then
-            log_technical "Database Configuration Details:"
-            log_to_report "$db_details"
-        fi
-        
-        record_test_result "Create Database" "PASS" "Database '$TEST_DATABASE' created with proper charset"
-    else
-        log_step_error "Failed to create test database"
-        log_dba_info "Database creation failed, please check CREATE privileges and disk space"
-        record_test_result "Create Database" "FAIL" "Cannot create database '$TEST_DATABASE'"
-        return 1
-    fi
-    
-    # Test 2: Create test table
-    log_dba_info "Verifying table creation, indexing, and storage engine configuration"
-    
-    local create_table_sql="
-        USE $TEST_DATABASE;
-        CREATE TABLE IF NOT EXISTS test_table (
-            id INT PRIMARY KEY AUTO_INCREMENT,
-            name VARCHAR(100) NOT NULL,
-            email VARCHAR(100),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_name (name),
-            INDEX idx_email (email)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    "
-    log_sql "Table Creation: $create_table_sql"
-    
-    if echo "$create_table_sql" | eval "$mysql_cmd" 2>/dev/null; then
-        ((operations_passed++))
-        log_technical "Table 'test_table' created with InnoDB engine and proper indexes"
-        
-        # Get table structure details
-        local table_info_sql="USE $TEST_DATABASE; SHOW CREATE TABLE test_table;"
-        log_sql "Table Structure Verification: SHOW CREATE TABLE test_table"
-        local table_structure
-        if table_structure=$(echo "$table_info_sql" | eval "$mysql_cmd" 2>/dev/null); then
-            log_technical "Table Structure Details:"
-            log_to_report "$table_structure"
-        fi
-        
-        record_test_result "Create Table" "PASS" "Table 'test_table' created with InnoDB engine"
-    else
-        log_step_error "Failed to create test table"
-        log_dba_info "Table creation failed, please check storage engine support and tablespace configuration"
-        record_test_result "Create Table" "FAIL" "Cannot create test table"
-        cleanup_test_database
-        return 1
-    fi
-    
-    # Test 3-6: CRUD Operations (simplified output)
-    local crud_operations=("INSERT" "SELECT" "UPDATE" "DELETE")
-    local crud_sqls=(
-        "USE $TEST_DATABASE; INSERT INTO test_table (name, email) VALUES ('Test User 1', 'user1@example.com'), ('Test User 2', 'user2@example.com'), ('Test User 3', 'user3@example.com');"
-        "USE $TEST_DATABASE; SELECT COUNT(*) as record_count FROM test_table;"
-        "USE $TEST_DATABASE; UPDATE test_table SET email = 'updated@example.com' WHERE id = 1;"
-        "USE $TEST_DATABASE; DELETE FROM test_table WHERE id = 3;"
-    )
-    
-    for i in "${!crud_operations[@]}"; do
-        local operation="${crud_operations[$i]}"
-        local sql="${crud_sqls[$i]}"
-        
-        log_sql "$operation Operation: $sql"
-        
-        local start_time=$(date +%s%N)
-        local result
-        if result=$(echo "$sql" | eval "$mysql_cmd" 2>/dev/null); then
-            local end_time=$(date +%s%N)
-            local exec_time=$(((end_time - start_time) / 1000000))
-            ((operations_passed++))
-            
-            log_technical "$operation completed in ${exec_time}ms"
-            if [[ "$operation" == "SELECT" ]]; then
-                local count=$(echo "$result" | tail -n 1)
-                log_technical "Query result: $count records found"
-            fi
-            
-            record_test_result "$operation Data" "PASS" "$operation operation completed in ${exec_time}ms"
-        else
-            log_step_error "$operation operation failed"
-            record_test_result "$operation Data" "FAIL" "Cannot perform $operation operation"
-        fi
-    done
-    
-    log_step_success "CRUD operations completed ($operations_passed/$total_operations passed)"
-    return 0
-}
-
-# Performance benchmark test
-performance_benchmark() {
-    log_step_start "Performance Tests"
-    log_dba_info "Executing MySQL performance benchmark tests to evaluate service performance deployed via deploy-innodb-cluster.sh"
-    
-    local mysql_cmd
-    mysql_cmd=$(build_mysql_cmd)
-    local perf_passed=0
-    local total_perf_tests=3
-    
-    # Test 1: Connection performance (10 connections)
-    log_dba_info "Testing connection pool performance and concurrent connection capability"
-    log_technical "Testing 10 sequential connections to measure connection overhead"
-    
-    local start_time=$(date +%s%N)
-    local connections=0
-    local connection_times=()
-    
-    for i in {1..10}; do
-        local conn_start=$(date +%s%N)
-        local test_conn_sql="SELECT CONNECTION_ID(), NOW() as connection_time;"
-        log_sql "Connection Test $i: $test_conn_sql"
-        
-        local conn_result
-        if conn_result=$(echo "$test_conn_sql" | eval "$mysql_cmd" 2>/dev/null); then
-            local conn_end=$(date +%s%N)
-            local conn_time=$(((conn_end - conn_start) / 1000000))
-            connection_times+=("$conn_time")
-            ((connections++))
-            log_technical "Connection $i: ${conn_time}ms - $(echo "$conn_result" | tr '\n' ' ')"
-        else
-            log_technical "Connection $i: FAILED"
-        fi
-    done
-    
-    local end_time=$(date +%s%N)
-    local total_time=$(((end_time - start_time) / 1000000))
-    local avg_time=$((total_time / 10))
-    
-    # Calculate connection statistics
-    local min_time=999999
-    local max_time=0
-    for time in "${connection_times[@]}"; do
-        if [[ $time -lt $min_time ]]; then min_time=$time; fi
-        if [[ $time -gt $max_time ]]; then max_time=$time; fi
-    done
-    
-    if [[ $connections -eq 10 ]]; then
-        ((perf_passed++))
-        log_technical "Connection Statistics: Total=${total_time}ms, Avg=${avg_time}ms, Min=${min_time}ms, Max=${max_time}ms"
-        record_test_result "Connection Performance" "PASS" "10/10 connections, avg ${avg_time}ms (min: ${min_time}ms, max: ${max_time}ms)"
-    else
-        log_dba_info "Connection failure possible causes: max_connections limit, network latency, high server load"
-        record_test_result "Connection Performance" "FAIL" "Only $connections/10 connections successful"
-    fi
-    
-    # Test 2: Query performance (20 queries)
-    log_dba_info "Testing performance of different query types"
-    
-    local query_sql="USE $TEST_DATABASE; SELECT COUNT(*) FROM test_table;"
-    log_sql "Simple Query Test: $query_sql"
-    log_technical "Testing 20 sequential COUNT queries to measure query performance"
-    
-    local query_start=$(date +%s%N)
-    local queries=0
-    local query_times=()
-    
-    for i in {1..20}; do
-        local q_start=$(date +%s%N)
-        local query_result
-        if query_result=$(echo "$query_sql" | eval "$mysql_cmd" 2>/dev/null); then
-            local q_end=$(date +%s%N)
-            local q_time=$(((q_end - q_start) / 1000000))
-            query_times+=("$q_time")
-            ((queries++))
-            if [[ $((i % 5)) -eq 0 ]]; then
-                log_technical "Query $i: ${q_time}ms - Result: $(echo "$query_result" | tail -n 1)"
-            fi
-        fi
-    done
-    
-    local query_end=$(date +%s%N)
-    local query_total=$(((query_end - query_start) / 1000000))
-    local query_avg=$((query_total / 20))
-    
-    # Calculate query statistics
-    local min_query=999999
-    local max_query=0
-    for time in "${query_times[@]}"; do
-        if [[ $time -lt $min_query ]]; then min_query=$time; fi
-        if [[ $time -gt $max_query ]]; then max_query=$time; fi
-    done
-    
-    if [[ $queries -eq 20 ]]; then
-        ((perf_passed++))
-        log_technical "Query Statistics: Total=${query_total}ms, Avg=${query_avg}ms, Min=${min_query}ms, Max=${max_query}ms"
-        
-        # Test complex query performance
-        local complex_query="USE $TEST_DATABASE; SELECT t1.name, t1.email, COUNT(*) as record_count FROM test_table t1 JOIN test_table t2 ON t1.id <= t2.id GROUP BY t1.id, t1.name, t1.email ORDER BY t1.id;"
-        log_sql "Complex Query Test: $complex_query"
-        
-        local complex_start=$(date +%s%N)
-        local complex_result
-        if complex_result=$(echo "$complex_query" | eval "$mysql_cmd" 2>/dev/null); then
-            local complex_end=$(date +%s%N)
-            local complex_time=$(((complex_end - complex_start) / 1000000))
-            log_technical "Complex Query Performance: ${complex_time}ms"
-            log_technical "Complex Query Results:"
-            log_to_report "$complex_result"
-        fi
-        
-        record_test_result "Query Performance" "PASS" "20/20 queries, avg ${query_avg}ms (min: ${min_query}ms, max: ${max_query}ms)"
-    else
-        log_dba_info "Query performance issues possible causes: missing indexes, table locking, improper buffer pool configuration, disk I/O bottleneck"
-        record_test_result "Query Performance" "FAIL" "Only $queries/20 queries successful"
-    fi
-    
-    # Test 3: Transaction performance (5 transactions)
-    log_dba_info "Testing transaction processing performance and ACID properties"
-    
-    local trans_sql="
-        USE $TEST_DATABASE;
-        START TRANSACTION;
-        INSERT INTO test_table (name, email) VALUES ('Perf Test', 'perf@test.com');
-        UPDATE test_table SET email = 'updated@test.com' WHERE name = 'Perf Test';
-        DELETE FROM test_table WHERE name = 'Perf Test';
-        COMMIT;
-    "
-    log_sql "Transaction Test: $trans_sql"
-    
-    local trans_start=$(date +%s%N)
-    local transactions=0
-    
-    for i in {1..5}; do
-        if echo "$trans_sql" | eval "$mysql_cmd" 2>/dev/null; then
-            ((transactions++))
-        fi
-    done
-    
-    local trans_end=$(date +%s%N)
-    local trans_total=$(((trans_end - trans_start) / 1000000))
-    local trans_avg=$((trans_total / 5))
-    
-    if [[ $transactions -eq 5 ]]; then
-        ((perf_passed++))
-        log_technical "Transaction processing demonstrates ACID compliance and proper isolation"
-        record_test_result "Transaction Performance" "PASS" "5/5 transactions, avg ${trans_avg}ms"
-    else
-        log_dba_info "Transaction performance issues possible causes: lock waits, deadlocks, transaction log configuration, isolation level settings"
-        record_test_result "Transaction Performance" "FAIL" "Only $transactions/5 transactions successful"
-    fi
-    
-    log_step_success "Performance tests completed ($perf_passed/$total_perf_tests passed)"
-}
-
 # Cleanup test database
 cleanup_test_database() {
     log_step_start "Cleanup"
@@ -706,6 +486,316 @@ cleanup_test_database() {
     fi
 }
 
+# Test database operations
+test_database_operations() {
+    # Temporarily disable strict error handling for this function
+    set +e
+    
+    log_step_start "Database Operations"
+    log_dba_info "Performing comprehensive database CRUD operations test"
+    
+    local mysql_cmd
+    mysql_cmd=$(build_mysql_cmd)
+    
+    local operations_passed=0
+    local total_operations=6
+    local function_result=0
+    
+    # Test 1: Create test database
+    log_dba_info "Verifying database creation privileges and storage engine functionality"
+    
+    local create_db_sql="CREATE DATABASE IF NOT EXISTS $TEST_DATABASE DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+    log_sql "Database Creation: $create_db_sql"
+    
+    local create_result
+    local create_exit_code=0
+    create_result=$(echo "$create_db_sql" | eval "$mysql_cmd" 2>&1) || create_exit_code=$?
+    if [[ $create_exit_code -eq 0 ]]; then
+        operations_passed=$((operations_passed + 1))
+        log_technical "Database '$TEST_DATABASE' created with UTF8MB4 character set"
+        
+        # Get database information
+        local db_info_sql="SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '$TEST_DATABASE';"
+        log_sql "Database Info Query: $db_info_sql"
+        local db_details
+        if db_details=$(echo "$db_info_sql" | eval "$mysql_cmd" 2>/dev/null); then
+            log_technical "Database Configuration Details:"
+            log_to_report "$db_details"
+        fi
+        
+        record_test_result "Create Database" "PASS" "Database '$TEST_DATABASE' created with proper charset"
+    else
+        log_step_error "Failed to create test database"
+        log_dba_info "Database creation failed, please check CREATE privileges and disk space"
+        log_technical "MySQL Error Details: $create_result"
+        record_test_result "Create Database" "FAIL" "Cannot create database '$TEST_DATABASE'"
+        function_result=1
+        # Continue with other tests instead of returning immediately
+    fi
+    
+    # Test 2: Create test table
+    log_dba_info "Verifying table creation, indexing, and storage engine configuration"
+    
+    local create_table_sql="
+        USE $TEST_DATABASE;
+        CREATE TABLE IF NOT EXISTS test_table (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            name VARCHAR(100) NOT NULL,
+            email VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_name (name),
+            INDEX idx_email (email)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    "
+    log_sql "Table Creation: $create_table_sql"
+    
+    local table_result
+    local table_exit_code=0
+    table_result=$(echo "$create_table_sql" | eval "$mysql_cmd" 2>&1) || table_exit_code=$?
+    if [[ $table_exit_code -eq 0 ]]; then
+        operations_passed=$((operations_passed + 1))
+        log_technical "Table 'test_table' created with InnoDB engine and proper indexes"
+        
+        # Get table structure details
+        local table_info_sql="USE $TEST_DATABASE; SHOW CREATE TABLE test_table;"
+        log_sql "Table Structure Verification: SHOW CREATE TABLE test_table"
+        local table_structure
+        if table_structure=$(echo "$table_info_sql" | eval "$mysql_cmd" 2>/dev/null); then
+            log_technical "Table Structure Details:"
+            log_to_report "$table_structure"
+        fi
+        
+        record_test_result "Create Table" "PASS" "Table 'test_table' created with InnoDB engine"
+    else
+        log_step_error "Failed to create test table"
+        log_dba_info "Table creation failed, please check storage engine support and tablespace configuration"
+        log_technical "MySQL Error Details: $table_result"
+        record_test_result "Create Table" "FAIL" "Cannot create test table"
+        function_result=1
+        # Skip remaining operations if table creation fails
+        log_step_success "Database operations completed ($operations_passed/$total_operations passed)"
+        set -e
+        return $function_result
+    fi
+    
+    # Test 3-6: CRUD Operations (simplified output)
+    local crud_operations=("INSERT" "SELECT" "UPDATE" "DELETE")
+    local crud_sqls=(
+        "USE $TEST_DATABASE; INSERT INTO test_table (name, email) VALUES ('Test User 1', 'user1@example.com'), ('Test User 2', 'user2@example.com'), ('Test User 3', 'user3@example.com');"
+        "USE $TEST_DATABASE; SELECT COUNT(*) as record_count FROM test_table;"
+        "USE $TEST_DATABASE; UPDATE test_table SET email = 'updated@example.com' WHERE id = 1;"
+        "USE $TEST_DATABASE; DELETE FROM test_table WHERE id = 3;"
+    )
+    
+    for i in "${!crud_operations[@]}"; do
+        local operation="${crud_operations[$i]}"
+        local sql="${crud_sqls[$i]}"
+        
+        log_sql "$operation Operation: $sql"
+        
+        local start_time=$(get_timestamp_ms)
+        local result
+        local sql_exit_code=0
+        result=$(echo "$sql" | eval "$mysql_cmd" 2>&1) || sql_exit_code=$?
+        if [[ $sql_exit_code -eq 0 ]]; then
+            local end_time=$(get_timestamp_ms)
+            local exec_time=$((end_time - start_time))
+            operations_passed=$((operations_passed + 1))
+            
+            log_technical "$operation completed in ${exec_time}ms"
+            if [[ "$operation" == "SELECT" ]]; then
+                local count=$(echo "$result" | tail -n 1)
+                log_technical "Query result: $count records found"
+            fi
+            
+            record_test_result "$operation Data" "PASS" "$operation operation completed in ${exec_time}ms"
+        else
+            log_step_error "$operation operation failed"
+            log_technical "MySQL Error Details: $result"
+            record_test_result "$operation Data" "FAIL" "Cannot perform $operation operation"
+            function_result=1
+        fi
+    done
+    
+    log_step_success "CRUD operations completed ($operations_passed/$total_operations passed)"
+    
+    # Re-enable strict error handling
+    set -e
+    return $function_result
+}
+
+# Performance benchmark test
+performance_benchmark() {
+    # Temporarily disable strict error handling for this function
+    set +e
+    
+    log_step_start "Performance Tests"
+    log_dba_info "Executing MySQL performance benchmark tests to evaluate service performance deployed via deploy-innodb-cluster.sh"
+    
+    local mysql_cmd
+    mysql_cmd=$(build_mysql_cmd)
+    local perf_passed=0
+    local total_perf_tests=3
+    local function_result=0
+    
+    # Test 1: Connection performance (10 connections)
+    log_dba_info "Testing connection pool performance and concurrent connection capability"
+    log_technical "Testing 10 sequential connections to measure connection overhead"
+    
+    local start_time=$(get_timestamp_ms)
+    local connections=0
+    local connection_times=()
+    
+    for i in {1..10}; do
+        local conn_start=$(get_timestamp_ms)
+        local test_conn_sql="SELECT CONNECTION_ID(), NOW() as connection_time;"
+        log_sql "Connection Test $i: $test_conn_sql"
+        
+        local conn_result
+        local conn_exit_code=0
+        conn_result=$(echo "$test_conn_sql" | eval "$mysql_cmd" 2>/dev/null) || conn_exit_code=$?
+        if [[ $conn_exit_code -eq 0 ]]; then
+            local conn_end=$(get_timestamp_ms)
+            local conn_time=$((conn_end - conn_start))
+            connection_times+=("$conn_time")
+            connections=$((connections + 1))
+            log_technical "Connection $i: ${conn_time}ms - $(echo "$conn_result" | tr '\n' ' ')"
+        else
+            log_technical "Connection $i: FAILED"
+        fi
+    done
+    
+    local end_time=$(get_timestamp_ms)
+    local total_time=$((end_time - start_time))
+    local avg_time=$((total_time / 10))
+    
+    # Calculate connection statistics
+    local min_time=999999
+    local max_time=0
+    for time in "${connection_times[@]}"; do
+        if [[ $time -lt $min_time ]]; then min_time=$time; fi
+        if [[ $time -gt $max_time ]]; then max_time=$time; fi
+    done
+    
+    if [[ $connections -eq 10 ]]; then
+        perf_passed=$((perf_passed + 1))
+        log_technical "Connection Statistics: Total=${total_time}ms, Avg=${avg_time}ms, Min=${min_time}ms, Max=${max_time}ms"
+        record_test_result "Connection Performance" "PASS" "10/10 connections, avg ${avg_time}ms (min: ${min_time}ms, max: ${max_time}ms)"
+    else
+        log_dba_info "Connection failure possible causes: max_connections limit, network latency, high server load"
+        record_test_result "Connection Performance" "FAIL" "Only $connections/10 connections successful"
+    fi
+    
+    # Test 2: Query performance (20 queries)
+    log_dba_info "Testing performance of different query types"
+    
+    local query_sql="USE $TEST_DATABASE; SELECT COUNT(*) FROM test_table;"
+    log_sql "Simple Query Test: $query_sql"
+    log_technical "Testing 20 sequential COUNT queries to measure query performance"
+    
+    local query_start=$(get_timestamp_ms)
+    local queries=0
+    local query_times=()
+    
+    for i in {1..20}; do
+        local q_start=$(get_timestamp_ms)
+        local query_result
+        local query_exit_code=0
+        query_result=$(echo "$query_sql" | eval "$mysql_cmd" 2>/dev/null) || query_exit_code=$?
+        if [[ $query_exit_code -eq 0 ]]; then
+            local q_end=$(get_timestamp_ms)
+            local q_time=$((q_end - q_start))
+            query_times+=("$q_time")
+            queries=$((queries + 1))
+            if [[ $((i % 5)) -eq 0 ]]; then
+                log_technical "Query $i: ${q_time}ms - Result: $(echo "$query_result" | tail -n 1)"
+            fi
+        fi
+    done
+    
+    local query_end=$(get_timestamp_ms)
+    local query_total_time=$((query_end - query_start))
+    local query_avg=$((query_total_time / 20))
+    
+    # Calculate query statistics
+    local min_query=999999
+    local max_query=0
+    for time in "${query_times[@]}"; do
+        if [[ $time -lt $min_query ]]; then min_query=$time; fi
+        if [[ $time -gt $max_query ]]; then max_query=$time; fi
+    done
+    
+    if [[ $queries -eq 20 ]]; then
+        perf_passed=$((perf_passed + 1))
+        log_technical "Query Statistics: Total=${query_total_time}ms, Avg=${query_avg}ms, Min=${min_query}ms, Max=${max_query}ms"
+        
+        # Test complex query performance
+        local complex_query="USE $TEST_DATABASE; SELECT t1.name, t1.email, COUNT(*) as record_count FROM test_table t1 JOIN test_table t2 ON t1.id <= t2.id GROUP BY t1.id, t1.name, t1.email ORDER BY t1.id;"
+        log_sql "Complex Query Test: $complex_query"
+        
+        local complex_start=$(get_timestamp_ms)
+        local complex_result
+        if complex_result=$(echo "$complex_query" | eval "$mysql_cmd" 2>/dev/null); then
+            local complex_end=$(get_timestamp_ms)
+            local complex_time=$((complex_end - complex_start))
+            log_technical "Complex Query Performance: ${complex_time}ms"
+            log_technical "Complex Query Results:"
+            log_to_report "$complex_result"
+        fi
+        
+        record_test_result "Query Performance" "PASS" "20/20 queries, avg ${query_avg}ms (min: ${min_query}ms, max: ${max_query}ms)"
+    else
+        log_dba_info "Query performance issues possible causes: missing indexes, table locking, improper buffer pool configuration, disk I/O bottleneck"
+        record_test_result "Query Performance" "FAIL" "Only $queries/20 queries successful"
+    fi
+    
+    # Test 3: Transaction performance (5 transactions)
+    log_dba_info "Testing transaction processing performance and ACID properties"
+    
+    local trans_sql="
+        USE $TEST_DATABASE;
+        START TRANSACTION;
+        INSERT INTO test_table (name, email) VALUES ('Perf Test', 'perf@test.com');
+        UPDATE test_table SET email = 'updated@test.com' WHERE name = 'Perf Test';
+        DELETE FROM test_table WHERE name = 'Perf Test';
+        COMMIT;
+    "
+    log_sql "Transaction Test: $trans_sql"
+    
+    local trans_start=$(get_timestamp_ms)
+    local transactions=0
+    
+    for i in {1..5}; do
+        local trans_exit_code=0
+        echo "$trans_sql" | eval "$mysql_cmd" 2>/dev/null || trans_exit_code=$?
+        if [[ $trans_exit_code -eq 0 ]]; then
+            transactions=$((transactions + 1))
+        fi
+    done
+    
+    local trans_end=$(get_timestamp_ms)
+    local trans_total=$((trans_end - trans_start))
+    local trans_avg=$((trans_total / 5))
+    
+    if [[ $transactions -eq 5 ]]; then
+        perf_passed=$((perf_passed + 1))
+        log_technical "Transaction processing demonstrates ACID compliance and proper isolation"
+        record_test_result "Transaction Performance" "PASS" "5/5 transactions, avg ${trans_avg}ms"
+    else
+        log_dba_info "Transaction performance issues possible causes: lock waits, deadlocks, transaction log configuration, isolation level settings"
+        record_test_result "Transaction Performance" "FAIL" "Only $transactions/5 transactions successful"
+    fi
+    
+    log_step_success "Performance tests completed ($perf_passed/$total_perf_tests passed)"
+    
+    # Re-enable strict error handling
+    set -e
+    return $function_result
+}
+
+# Cleanup test database
+
+
 # Generate verification report
 generate_report() {
     log_info "Generating comprehensive verification report..."
@@ -715,7 +805,7 @@ generate_report() {
     echo "==========================================="
     echo "MySQL InnoDB Cluster Verification Report"
     echo "==========================================="
-    echo "Report Generated: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    echo "Report Generated: $(get_log_timestamp)"
 
     echo
     echo "Connection Details:"
@@ -762,10 +852,10 @@ generate_report() {
     for result in "${TEST_RESULTS[@]}"; do
         if [[ "$result" == *"PASS"* ]]; then
             echo "✅ $result"
-            ((passed_tests++))
+            passed_tests=$((passed_tests + 1))
         elif [[ "$result" == *"FAIL"* ]]; then
             echo "❌ $result"
-            ((failed_tests++))
+            failed_tests=$((failed_tests + 1))
         else
             # This is a details line (starts with spaces)
             echo "$result"
@@ -913,7 +1003,7 @@ test_cluster_features() {
         else
             log_technical "This node is read-only (SECONDARY)"
         fi
-        ((features_passed++))
+        features_passed=$((features_passed + 1))
     fi
     
     # Test transaction consistency
@@ -924,7 +1014,7 @@ test_cluster_features() {
     if consistency_result=$(echo "$consistency_sql" | eval "$mysql_cmd" 2>/dev/null); then
         log_technical "Transaction Consistency Settings:"
         log_to_report "$consistency_result"
-        ((features_passed++))
+        features_passed=$((features_passed + 1))
     fi
     
     # Test cluster write performance with conflict detection

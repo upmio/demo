@@ -1158,7 +1158,7 @@ show_usage_info() {
 	echo "   chmod +x verify-mysql.sh"
 	echo
 	echo "   # Run verification script:"
-	echo "   ./verify-mysql.sh -h $NODEPORT_IP -P $nodeport -u radminuser -p $mysql_password -v -r mysql-verification-report.txt"
+	echo "   ./verify-mysql.sh -h $NODEPORT_IP -P $nodeport -u radminuser -p $mysql_password -r /tmp/mysql-verification-report.txt"
 	echo "   View verification script help:"
 	echo "   ./verify-mysql.sh --help"
 	echo

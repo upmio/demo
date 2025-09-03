@@ -54,7 +54,9 @@ UPM simplifies the deployment, scaling, and operations of complex services.
 
 Watch the complete deployment and verification process in action:
 
-[![asciicast](https://asciinema.org/a/737562.svg)](https://asciinema.org/a/737562)
+![UPM Demo](upm-demo.gif)
+
+Video link: [https://asciinema.org/a/737567](https://asciinema.org/a/737567)
 
 ### Prerequisites
 

@@ -98,8 +98,8 @@ done
 
 # Progress tracking variables
 CURRENT_STEP=0
-TOTAL_STEPS=6
-STEP_NAMES=("Prerequisites" "Connection" "Server Info" "Cluster Status" "Database Operations" "Cleanup")
+TOTAL_STEPS=8
+STEP_NAMES=("Prerequisites" "Connection" "Server Info" "Cluster Status" "Database Operations" "Performance Tests" "Cluster Features" "Cleanup")
 
 # Simplified logging functions with progress indicators
 log_step_start() {

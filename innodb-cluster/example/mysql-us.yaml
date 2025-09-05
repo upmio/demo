@@ -1,9 +1,6 @@
 apiVersion: upm.syntropycloud.io/v1alpha2
 kind: UnitSet
 metadata:
-  finalizers:
-  - upm.io/unit-delete
-  - upm.io/configmap-delete
   generation: 1
   labels:
     upm.api/service-group.name: demo

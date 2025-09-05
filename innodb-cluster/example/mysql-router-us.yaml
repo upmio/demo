@@ -4,9 +4,6 @@ metadata:
   annotations:
     unit-operator.external-service.type: NodePort
     upm.api/nodeport-ip: 10.37.132.105
-  finalizers:
-  - upm.io/unit-delete
-  - upm.io/configmap-delete
   generation: 1
   labels:
     upm.api/service-group.name: demo

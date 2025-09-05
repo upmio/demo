@@ -3,7 +3,6 @@ kind: MysqlGroupReplication
 metadata:
   labels:
     upm.api/service-group.name: demo
-    upm.api/service-group.type: innodb-cluster-sg
     upm.api/service.name: demo-mysql-xxx
     upm.io/owner: upm
   name: demo-mysql-xxx-replication

@@ -7,7 +7,6 @@ metadata:
   generation: 1
   labels:
     upm.api/service-group.name: demo
-    upm.api/service-group.type: innodb-cluster-sg
     upm.api/service.arch.mode: group_replication
     upm.api/service.type: mysql
   name: demo-mysql-xxx

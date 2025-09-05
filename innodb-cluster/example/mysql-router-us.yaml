@@ -10,7 +10,6 @@ metadata:
   generation: 1
   labels:
     upm.api/service-group.name: demo
-    upm.api/service-group.type: innodb-cluster-sg
     upm.api/service.arch.mode: clone
     upm.api/service.type: mysql-router
   name: demo-mysql-router-yyy

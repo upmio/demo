@@ -205,7 +205,7 @@ The `verify-mysql.sh` script is an independent MySQL database verification tool 
 ./verify-mysql.sh -h <host> -P <port> -u <username> -p <password> -d mydatabase
 ```
 
-### Command Line Parameters
+### Script Parameters
 
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
@@ -250,8 +250,8 @@ $ ./verify-mysql.sh -h 10.37.132.105 -P 30206 -u radminuser -p mypassword123 -v
 
 [SUCCESS] MySQL connection successful
 [SUCCESS] MySQL server information:
-version	hostname	port
-8.0.41	mysql-0	3306
+version    hostname    port
+8.0.41     mysql-0     3306
 
 [SUCCESS] Test database created successfully
 [SUCCESS] Test table created successfully

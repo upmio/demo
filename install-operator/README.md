@@ -108,7 +108,7 @@ unit-operator-xxx                   1/1     Running   0          2m
 ```bash
 # Manually install cert-manager
 kubectl apply -f \
-  https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+  https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
 
 # Wait for Pods to be ready
 kubectl wait --for=condition=ready pod \
@@ -217,7 +217,7 @@ kubectl delete crd $(kubectl get crd | grep upm | awk '{print $1}')
 
 # Delete cert-manager (if no longer needed)
 kubectl delete -f \
-  https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+  https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
 
 # Delete Helm release
 helm uninstall unit-operator -n upm-system
@@ -241,7 +241,7 @@ helm install unit-operator upmio/unit-operator \
 
 - **Kubernetes**: Supports version 1.29+
 - **Helm**: Supports version 3.0+
-- **cert-manager**: Supports version 1.10+
+- **cert-manager**: Supports version 1.13+
 
 ## Contributing
 

@@ -93,6 +93,8 @@ This script will deploy the following components:
 - **Kubernetes**: v1.29+
 - **kubectl**: Configured and able to access target cluster
 - **Helm**: v3.8+ (for deploying MySQL components)
+- **Unit Operator**: UPM custom resource definitions and operator
+- **Compose Operator**: UPM custom resource definitions and operator
 - **Storage**: StorageClass supporting dynamic PVC allocation
 
 ### Resource Requirements
@@ -538,11 +540,9 @@ kubectl delete namespace mysql-cluster
 ### Data-Preserving Cleanup
 
 ```bash
-# Delete only Pods and Services, preserve PVCs
-kubectl delete deployment,statefulset,service -n mysql-cluster \
-  -l app.kubernetes.io/name=mysql
-kubectl delete deployment,service -n mysql-cluster \
-  -l app.kubernetes.io/name=mysql-router
+# Delete only UnitSet resources, preserve PVCs
+kubectl delete unitset -n mysql-cluster \
+  -l upm.api/service-group.name=demo
 ```
 
 ### Storage Cleanup
@@ -557,113 +557,31 @@ To clean up deployed resources, you can use the following commands:
 
 ```bash
 # Delete UnitSet resources
-kubectl delete unitset demo-mysql-xxx demo-mysql-router-yyy \
-  -n <namespace>
+kubectl delete unitset -n <namespace> \
+  -l upm.api/service-group.name=demo
 
 # Delete Group Replication resources
-kubectl delete mysqlgroupreplication demo-mysql-xxx-replication \
-  -n <namespace>
+kubectl delete mysqlgroupreplication -n <namespace> \
+  -l upm.api/service-group.name=demo
 
 # Delete Secret resources
 kubectl delete secret innodb-cluster-sg-demo-secret \
   -n <namespace>
 
 # Delete possible Job resources
-kubectl delete job generate-innodb-cluster-secret-job -n upm-system \
+kubectl delete job generate-innodb-cluster-secret-job -n <namespace> \
   --ignore-not-found=true
 ```
-
-## Configuration File Description
-
-### MySQL Configuration
-
-The script uses the following default configuration:
-
-```ini
-[mysqld]
-server-id=1
-gtid-mode=ON
-enforce-gtid-consistency=ON
-binlog-format=ROW
-log-bin=mysql-bin
-log-slave-updates=ON
-master-info-repository=TABLE
-relay-log-info-repository=TABLE
-transaction-write-set-extraction=XXHASH64
-loose-group_replication_group_name="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-loose-group_replication_start_on_boot=OFF
-loose-group_replication_local_address="mysql-cluster-0.mysql-cluster:33061"
-loose-group_replication_group_seeds="mysql-cluster-0.mysql-cluster:33061,\
-mysql-cluster-1.mysql-cluster:33061,mysql-cluster-2.mysql-cluster:33061"
-loose-group_replication_bootstrap_group=OFF
-```
-
-### MySQL Router Configuration
-
-```ini
-[DEFAULT]
-logging_folder=/tmp/mysqlrouter/log
-runtime_folder=/tmp/mysqlrouter/run
-config_folder=/tmp/mysqlrouter
-
-[logger]
-level=INFO
-
-[metadata_cache:bootstrap]
-router_id=1
-bootstrap_server_addresses=mysql-cluster:3306
-user=radminuser
-metadata_cluster=prodCluster
-ttl=0.5
-
-[routing:bootstrap_rw]
-bind_address=0.0.0.0
-bind_port=6446
-destinations=metadata-cache://prodCluster/default?role=PRIMARY
-routing_strategy=first-available
-
-[routing:bootstrap_ro]
-bind_address=0.0.0.0
-bind_port=6447
-destinations=metadata-cache://prodCluster/default?role=SECONDARY
-routing_strategy=round-robin-with-fallback
-```
-
-The script uses the following YAML template files (located in the
-`example/` directory):
-
-- `gen-secret.yaml`: Job configuration for generating database
-  passwords
-- `mysql-us.yaml`: UnitSet configuration for MySQL InnoDB Cluster
-- `mysql-router-us.yaml`: UnitSet configuration for MySQL Router
-- `mysql-group-replication.yaml`: MySQL Group Replication
-  configuration
-
-Placeholders in these template files will be replaced with actual
-values during deployment.
 
 ## Version Compatibility
 
 | Component | Version | Description |
 |-----------|---------|-------------|
-| Kubernetes | 1.29+ | Supports StatefulSet and Service |
+| Kubernetes | 1.29+ | Supports UnitSet and UPM CRDs |
+| Unit Operator | Latest | UPM custom resource definitions |
+| Compose Operator | Latest | UPM custom resource definitions |
 | MySQL | 8.0+ | Supports Group Replication |
 | MySQL Router | 8.0+ | Matches MySQL version |
-
-## Contributing
-
-We welcome Issues and Pull Requests to improve this project.
-
-### Development Guidelines
-
-1. Fork this repository
-2. Create a feature branch
-   (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes
-   (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch
-   (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
 
 ## License
 

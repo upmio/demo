@@ -154,244 +154,61 @@ cleanup() {
 trap cleanup EXIT
 
 # Create embedded YAML files
-create_embedded_yaml_files() {
+download_yaml_templates() {
 	local temp_dir="$1"
 	mkdir -p "$temp_dir"
 
-	# 0-project.yaml
-	cat > "$temp_dir/0-project.yaml" << 'EOF'
-apiVersion: upm.syntropycloud.io/v1alpha1
-kind: Project
-metadata:
-  name: <namespace>
-spec:
-  displayName: <namespace>
-  namespace: <namespace>
-EOF
+	# Base URL for YAML templates - can be configured via environment variable
+	local base_url="${YAML_TEMPLATES_BASE_URL:-https://raw.githubusercontent.com/upmio/demo/refs/heads/main/redis-sentinel/templates}"
 
-	# 1-gen-secret.yaml
-	cat > "$temp_dir/1-gen-secret.yaml" << 'EOF'
-apiVersion: batch/v1
-kind: Job
-metadata:
-  labels:
-    upm.api/service-group.name: demo
-  name: gen-redis-sentinel-sg-demo-secret
-  namespace: <namespace>
-spec:
-  template:
-    spec:
-      containers:
-      - command:
-        - /bin/bash
-        - -c
-        - |
-          kubectl create secret generic redis-sentinel-sg-demo-secret \
-            --from-literal=default="$(openssl rand -base64 32)" \
-            --dry-run=client -o yaml | kubectl apply -f -
-        image: bitnami/kubectl:1.28
-        name: gen-secret
-      restartPolicy: OnFailure
-EOF
+	# List of YAML template files to download
+	local yaml_files=(
+		"0-project.yaml"
+		"1-gen-secret.yaml"
+		"2-redis-us.yaml"
+		"3.0-redis-replication.yaml"
+		"3.1-redis-replication_patch.yaml"
+		"4-redis-sentinel-us.yaml"
+	)
 
-	# 2-redis-us.yaml
-	cat > "$temp_dir/2-redis-us.yaml" << 'EOF'
-apiVersion: upm.syntropycloud.io/v1alpha1
-kind: UnitSet
-metadata:
-  labels:
-    upm.api/service-group.name: demo
-  name: demo-redis-<redis-name-suffix>
-  namespace: <namespace>
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      upm.api/service-group.name: demo
-      upm.api/unit-set.name: demo-redis-<redis-name-suffix>
-  serviceName: demo-redis-<redis-name-suffix>-headless-svc
-  template:
-    metadata:
-      labels:
-        upm.api/service-group.name: demo
-        upm.api/unit-set.name: demo-redis-<redis-name-suffix>
-    spec:
-      containers:
-      - env:
-        - name: REDIS_REPLICATION_MODE
-          value: master
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              key: default
-              name: redis-sentinel-sg-demo-secret
-        image: docker.io/bitnami/redis:<version>
-        name: redis
-        ports:
-        - containerPort: 6379
-          name: tcp-redis
-          protocol: TCP
-        resources:
-          limits:
-            cpu: 150m
-            memory: 192Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-        volumeMounts:
-        - mountPath: /bitnami/redis/data
-          name: redis-data
-      volumes:
-      - name: redis-data
-        persistentVolumeClaim:
-          claimName: redis-data
-  volumeClaimTemplates:
-  - metadata:
-      name: redis-data
-    spec:
-      accessModes:
-      - ReadWriteOnce
-      resources:
-        requests:
-          storage: 8Gi
-      storageClassName: <storageClass-name>
-EOF
+	print_info "Downloading YAML templates from remote repository..."
 
-	# 3.0-redis-replication.yaml
-	cat > "$temp_dir/3.0-redis-replication.yaml" << 'EOF'
-apiVersion: upm.syntropycloud.io/v1alpha1
-kind: RedisReplication
-metadata:
-  annotations:
-    compose-operator.redisreplication/skip-reconcile: "true"
-  labels:
-    upm.api/service-group.name: demo
-  name: demo-redis-<redis-name-suffix>-replication
-  namespace: <namespace>
-spec:
-  aesSecret:
-    key: AES_SECRET_KEY
-    name: aes-secret-key
-  replica:
-  - host: demo-redis-<redis-name-suffix>-2.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
-    announceHost: <nodeport-ip>
-    announcePort: <unit-2_nodeport>
-    name: demo-redis-<redis-name-suffix>-2
-    port: 6379
-  - host: demo-redis-<redis-name-suffix>-1.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
-    announceHost: <nodeport-ip>
-    announcePort: <unit-1_nodeport>
-    name: demo-redis-<redis-name-suffix>-1
-    port: 6379
-  secret:
-    name: redis-sentinel-sg-demo-secret
-    redis: default
-  service:
-    type: NodePort
-  source:
-    host: demo-redis-<redis-name-suffix>-0.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
-    announceHost: <nodeport-ip>
-    announcePort: <unit-0_nodeport>
-    name: demo-redis-<redis-name-suffix>-0
-    port: 6379
-EOF
+	# Download each YAML template file
+	local download_success=true
+	for yaml_file in "${yaml_files[@]}"; do
+		local file_url="${base_url}/${yaml_file}"
+		local target_file="${temp_dir}/${yaml_file}"
 
-	# 3.1-redis-replication_patch.yaml
-	cat > "$temp_dir/3.1-redis-replication_patch.yaml" << 'EOF'
-apiVersion: upm.syntropycloud.io/v1alpha1
-kind: RedisReplication
-metadata:
-  annotations:
-    compose-operator.redisreplication/skip-reconcile: "true"
-  labels:
-    upm.api/service-group.name: demo
-  name: demo-redis-<redis-name-suffix>-replication
-  namespace: <namespace>
-spec:
-  aesSecret:
-    key: AES_SECRET_KEY
-    name: aes-secret-key
-  replica:
-  - host: demo-redis-<redis-name-suffix>-2.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
-    announceHost: <nodeport-ip>
-    announcePort: <unit-2_nodeport>
-    name: demo-redis-<redis-name-suffix>-2
-    port: 6379
-  - host: demo-redis-<redis-name-suffix>-1.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
-    announceHost: <nodeport-ip>
-    announcePort: <unit-1_nodeport>
-    name: demo-redis-<redis-name-suffix>-1
-    port: 6379
-  secret:
-    name: redis-sentinel-sg-demo-secret
-    redis: default
-  sentinel:
-  - demo-redis-sentinel-<sentinel-name-suffix>-0
-  - demo-redis-sentinel-<sentinel-name-suffix>-1
-  - demo-redis-sentinel-<sentinel-name-suffix>-2
-  service:
-    type: NodePort
-  source:
-    host: demo-redis-<redis-name-suffix>-0.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
-    announceHost: <nodeport-ip>
-    announcePort: <unit-0_nodeport>
-    name: demo-redis-<redis-name-suffix>-0
-    port: 6379
-EOF
+		print_info "Downloading ${yaml_file}..."
 
-	# 4-redis-sentinel-us.yaml
-	cat > "$temp_dir/4-redis-sentinel-us.yaml" << 'EOF'
-apiVersion: upm.syntropycloud.io/v1alpha1
-kind: UnitSet
-metadata:
-  labels:
-    upm.api/service-group.name: demo
-  name: demo-redis-sentinel-<sentinel-name-suffix>
-  namespace: <namespace>
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      upm.api/service-group.name: demo
-      upm.api/unit-set.name: demo-redis-sentinel-<sentinel-name-suffix>
-  serviceName: demo-redis-sentinel-<sentinel-name-suffix>-headless-svc
-  template:
-    metadata:
-      labels:
-        upm.api/service-group.name: demo
-        upm.api/unit-set.name: demo-redis-sentinel-<sentinel-name-suffix>
-    spec:
-      containers:
-      - env:
-        - name: REDIS_MASTER_HOST
-          value: demo-redis-<redis-name-suffix>-0.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
-        - name: REDIS_MASTER_PORT_NUMBER
-          value: "6379"
-        - name: REDIS_MASTER_SET
-          value: mymaster
-        - name: REDIS_SENTINEL_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              key: default
-              name: redis-sentinel-sg-demo-secret
-        - name: REDIS_SENTINEL_QUORUM
-          value: "2"
-        image: docker.io/bitnami/redis-sentinel:<version>
-        name: redis-sentinel
-        ports:
-        - containerPort: 26379
-          name: tcp-sentinel
-          protocol: TCP
-        resources:
-          limits:
-            cpu: 150m
-            memory: 192Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-EOF
+		# Download with curl, follow redirects, fail on HTTP errors
+		if curl -sSL --fail "$file_url" -o "$target_file"; then
+			print_success "Successfully downloaded ${yaml_file}"
+		else
+			print_error "Failed to download ${yaml_file} from ${file_url}"
+			download_success=false
+			break
+		fi
 
-	print_success "Embedded YAML templates created in $temp_dir"
+		# Verify file was downloaded and is not empty
+		if [[ ! -s "$target_file" ]]; then
+			print_error "Downloaded file ${yaml_file} is empty or corrupted"
+			download_success=false
+			break
+		fi
+	done
+
+	# Check if all downloads were successful
+	if [[ "$download_success" == "true" ]]; then
+		print_success "All YAML templates downloaded successfully to $temp_dir"
+	else
+		print_error "YAML template download failed. Please check:"
+		print_error "  1. Network connectivity"
+		print_error "  2. Repository URL: $base_url"
+		print_error "  3. Template files availability"
+		print_error "You can set custom base URL via: export YAML_TEMPLATES_BASE_URL=<your-url>"
+		exit 1
+	fi
 }
 
 # Generate random identifier
@@ -399,9 +216,14 @@ generate_random_identifier() {
 	local length="${1:-5}"
 	# Use LC_ALL=C to avoid locale issues with tr and /dev/urandom
 	LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom 2>/dev/null | head -c "$length" 2>/dev/null || {
-		# Fallback: use timestamp-based random string
-		local timestamp=$(date +%s%N 2>/dev/null || date +%s)
-		echo "${timestamp}" | tail -c $((length + 1)) | tr -d '\n'
+		# Fallback: generate random string using $RANDOM
+		local result=""
+		for ((i=0; i<length; i++)); do
+			local chars="abcdefghijklmnopqrstuvwxyz0123456789"
+			local random_index=$((RANDOM % ${#chars}))
+			result+="${chars:$random_index:1}"
+		done
+		echo "$result"
 	}
 }
 
@@ -416,8 +238,8 @@ escape_sed_replacement() {
 prepare_yaml_files() {
 	print_info "Preparing YAML configuration files..."
 
-	# Create temporary directory and embedded YAML files
-	create_embedded_yaml_files "$TEMP_DIR"
+	# Create temporary directory and download YAML templates
+	download_yaml_templates "$TEMP_DIR"
 
 	print_success "YAML files prepared in temporary directory: $TEMP_DIR"
 }
@@ -444,7 +266,7 @@ check_storageclass() {
 get_redis_versions() {
 	# Get Redis related versions from UPM packages
 	local redis_versions
-	redis_versions=$(helm search repo upm-packages | grep "redis-" | awk '{print $3}' | sort -V -r || echo "")
+	redis_versions=$(helm search repo upm-packages | grep "redis" | grep -v "redis-sentinel" | awk '{print $3}' | sort -V -r || echo "")
 
 	if [[ -z "$redis_versions" ]]; then
 		# Provide default version based on available packages

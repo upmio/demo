@@ -214,17 +214,16 @@ download_yaml_templates() {
 # Generate random identifier
 generate_random_identifier() {
 	local length="${1:-5}"
-	# Use LC_ALL=C to avoid locale issues with tr and /dev/urandom
-	LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom 2>/dev/null | head -c "$length" 2>/dev/null || {
-		# Fallback: generate random string using $RANDOM
-		local result=""
-		for ((i=0; i<length; i++)); do
-			local chars="abcdefghijklmnopqrstuvwxyz0123456789"
-			local random_index=$((RANDOM % ${#chars}))
-			result+="${chars:$random_index:1}"
-		done
-		echo "$result"
-	}
+	local chars="abcdefghijklmnopqrstuvwxyz0123456789"
+	local result=""
+	
+	# Generate random string using $RANDOM
+	for ((i=0; i<length; i++)); do
+		local random_index=$((RANDOM % ${#chars}))
+		result+="${chars:$random_index:1}"
+	done
+	
+	echo "$result"
 }
 
 # Escape special characters for sed replacement

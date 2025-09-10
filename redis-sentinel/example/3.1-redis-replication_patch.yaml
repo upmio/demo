@@ -1,0 +1,37 @@
+apiVersion: upm.syntropycloud.io/v1alpha1
+kind: RedisReplication
+metadata:
+  labels:
+    upm.api/service-group.name: demo
+  name: demo-redis-<redis-name-suffix>-replication
+  namespace: <namespace>
+spec:
+  aesSecret:
+    key: AES_SECRET_KEY
+    name: aes-secret-key
+  replica:
+  - host: demo-redis-<redis-name-suffix>-2.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
+    announceHost: <nodeport-ip>
+    announcePort: <unit-2_nodeport>
+    name: demo-redis-<redis-name-suffix>-2
+    port: 6379
+  - host: demo-redis-<redis-name-suffix>-1.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
+    announceHost: <nodeport-ip>
+    announcePort: <unit-1_nodeport>
+    name: demo-redis-<redis-name-suffix>-1
+    port: 6379
+  secret:
+    name: redis-sentinel-sg-demo-secret
+    redis: default
+  sentinel:
+  - demo-redis-sentinel-<sentinel-name-suffix>-0
+  - demo-redis-sentinel-<sentinel-name-suffix>-1
+  - demo-redis-sentinel-<sentinel-name-suffix>-2
+  service:
+    type: NodePort
+  source:
+    host: demo-redis-<redis-name-suffix>-0.demo-redis-<redis-name-suffix>-headless-svc.<namespace>
+    announceHost: <nodeport-ip>
+    announcePort: <unit-0_nodeport>
+    name: demo-redis-<redis-name-suffix>-0
+    port: 6379

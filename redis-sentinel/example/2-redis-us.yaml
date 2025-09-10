@@ -1,0 +1,40 @@
+apiVersion: upm.syntropycloud.io/v1alpha2
+kind: UnitSet
+metadata:
+  annotations:
+    upm.api/nodeport-ip: <nodeport-ip>
+  labels:
+    upm.api/service-group.name: demo
+    upm.api/service.arch.mode: replication
+  name: demo-redis-<redis-name-suffix>
+  namespace: <namespace>
+spec:
+  env:
+  - name: ADM_USER
+    value: default
+  podMonitor:
+    enable: true
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: "1"
+      memory: 1Gi
+  secret:
+    mountPath: /SECRET_MOUNT
+    name: redis-sentinel-sg-demo-secret
+  storages:
+  - mountPath: /DATA_MOUNT
+    name: data
+    size: 10Gi
+    storageClassName: <storageClass-name>
+  - mountPath: /LOG_MOUNT
+    name: log
+    size: 10Gi
+    storageClassName: <storageClass-name>
+  type: redis
+  unitService:
+    type: NodePort
+  units: 3
+  version: <version>

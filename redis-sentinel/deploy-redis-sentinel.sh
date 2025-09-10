@@ -268,8 +268,8 @@ get_redis_versions() {
 	redis_versions=$(helm search repo upm-packages | grep "redis" | grep -v "redis-sentinel" | awk '{print $3}' | sort -V -r || echo "")
 
 	if [[ -z "$redis_versions" ]]; then
-		# Provide default version based on available packages
-		echo "7.0.14"
+		print_error "Unable to get Redis version list"
+		exit 1
 	else
 		echo "$redis_versions"
 	fi
@@ -635,6 +635,39 @@ validate_parameters() {
 
 # Interactive parameter input
 get_user_input() {
+	# Select Redis version (only if not provided)
+	if [[ -z "$REDIS_VERSION" ]]; then
+		local redis_versions
+		redis_versions=$(get_redis_versions)
+		if [[ -n "$redis_versions" ]]; then
+			local redis_version_array=()
+			while IFS= read -r line; do
+				[[ -n "$line" ]] && redis_version_array+=("$line")
+			done <<<"$redis_versions"
+
+			if [[ ${#redis_version_array[@]} -gt 0 ]]; then
+				REDIS_VERSION=$(select_from_list "Select Redis version:" "${redis_version_array[@]}" "false")
+			else
+				print_warning "Unable to get Redis version list"
+				exit 1
+			fi
+		else
+			print_warning "Unable to get Redis version list"
+			exit 1
+		fi
+	else
+		print_info "Redis Version already specified: $REDIS_VERSION"
+		# Validate provided Redis version
+		if ! validate_redis_version "$REDIS_VERSION"; then
+			print_error "Invalid Redis version specified: $REDIS_VERSION"
+			print_info "Available Redis versions:"
+			get_redis_versions | while IFS= read -r version; do
+				echo "  - $version"
+			done
+			exit 1
+		fi
+	fi
+
 	# Display current parameter status
 	print_info "Current parameter configuration:"
 	if [[ -n "$STORAGE_CLASS" ]]; then
@@ -724,45 +757,12 @@ get_user_input() {
 		print_info "Namespace already specified: $NAMESPACE"
 	fi
 
-	# Select Redis version (only if not provided)
-	if [[ -z "$REDIS_VERSION" ]]; then
-		local redis_versions
-		redis_versions=$(get_redis_versions)
-		if [[ -n "$redis_versions" ]]; then
-			local redis_version_array=()
-			while IFS= read -r line; do
-				[[ -n "$line" ]] && redis_version_array+=("$line")
-			done <<<"$redis_versions"
-
-			if [[ ${#redis_version_array[@]} -gt 0 ]]; then
-				REDIS_VERSION=$(select_from_list "Select Redis version:" "${redis_version_array[@]}" "false")
-			else
-				print_warning "Unable to get Redis version list"
-				exit 1
-			fi
-		else
-			print_warning "Unable to get Redis version list"
-			exit 1
-		fi
-	else
-		print_info "Redis Version already specified: $REDIS_VERSION"
-		# Validate provided Redis version
-		if ! validate_redis_version "$REDIS_VERSION"; then
-			print_error "Invalid Redis version specified: $REDIS_VERSION"
-			print_info "Available Redis versions:"
-			get_redis_versions | while IFS= read -r version; do
-				echo "  - $version"
-			done
-			exit 1
-		fi
-	fi
-
 	echo
 	print_success "Parameter configuration completed:"
+    print_success "  Redis Version: $REDIS_VERSION"
 	print_success "  StorageClass: $STORAGE_CLASS"
 	print_success "  Namespace: $NAMESPACE"
 	print_success "  NodePort IP: $NODEPORT_IP (auto-detected)"
-	print_success "  Redis Version: $REDIS_VERSION"
 	echo
 }
 

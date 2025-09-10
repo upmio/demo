@@ -86,7 +86,7 @@ Examples:
     $0                                                    # Interactive deployment mode
     $0 --dry-run                                          # Preview mode, display YAML content
     $0 --namespace redis-system --storage-class local-path  # Non-interactive mode
-    $0 --redis-version 7.2.4                            # Specify version
+    $0 --redis-version 7.0.14                            # Specify version
     $0 --help                                             # Show help information
 
 Note:
@@ -737,12 +737,12 @@ get_user_input() {
 			if [[ ${#redis_version_array[@]} -gt 0 ]]; then
 				REDIS_VERSION=$(select_from_list "Select Redis version:" "${redis_version_array[@]}" "false")
 			else
-				print_warning "Unable to get Redis version list, using default version 7.2.4"
-				REDIS_VERSION="7.2.4"
+				print_warning "Unable to get Redis version list"
+				exit 1
 			fi
 		else
-			print_warning "Unable to get Redis version list, using default version 7.2.4"
-			REDIS_VERSION="7.2.4"
+			print_warning "Unable to get Redis version list"
+			exit 1
 		fi
 	else
 		print_info "Redis Version already specified: $REDIS_VERSION"

@@ -268,10 +268,11 @@ get_redis_versions() {
 	redis_versions=$(helm search repo upm-packages | grep "redis" | grep -v "redis-sentinel" | awk '{print $3}' | sort -V -r || echo "")
 
 	if [[ -z "$redis_versions" ]]; then
-		print_error "Unable to get Redis version list"
-		exit 1
+		print_error "Unable to get Redis version list" >&2
+		return 1
 	else
 		echo "$redis_versions"
+		return 0
 	fi
 }
 
@@ -285,7 +286,9 @@ validate_redis_version() {
 	
 	# Get available Redis versions
 	local available_versions
-	available_versions=$(get_redis_versions)
+	if ! available_versions=$(get_redis_versions); then
+		return 1
+	fi
 	
 	# Check if the provided version is in the available versions list
 	while IFS= read -r available_version; do
@@ -351,6 +354,32 @@ install_upm_packages() {
 }
 
 # Check dependencies
+# Check and add helm repository if needed
+check_helm_repo() {
+	print_info "Checking helm repository..."
+	
+	# Check if upm-packages repo exists
+	if helm repo list 2>/dev/null | grep -q "upm-packages"; then
+		print_success "Helm repository 'upm-packages' already exists"
+		return 0
+	fi
+	
+	print_info "Adding helm repository 'upm-packages'..."
+	if helm repo add upm-packages https://upmio.github.io/upm-packages; then
+		print_success "Successfully added helm repository 'upm-packages'"
+		# Update repo to ensure it's accessible
+		if helm repo update; then
+			print_success "Helm repositories updated successfully"
+		else
+			print_warning "Failed to update helm repositories, but repo was added"
+		fi
+	else
+		print_error "Failed to add helm repository 'upm-packages'"
+		print_error "Please check your network connection and try again"
+		exit 1
+	fi
+}
+
 check_dependencies() {
 	print_info "Checking dependencies..."
 
@@ -378,6 +407,9 @@ check_dependencies() {
 	fi
 
 	print_success "Basic dependency check passed"
+
+	# Check and add helm repository
+	check_helm_repo
 
 	# Check StorageClass
 	check_storageclass
@@ -623,9 +655,13 @@ validate_parameters() {
 		if ! validate_redis_version "$REDIS_VERSION"; then
 			print_error "Invalid Redis version specified: $REDIS_VERSION"
 			print_info "Available Redis versions:"
-			get_redis_versions | while IFS= read -r version; do
+			if get_redis_versions | while IFS= read -r version; do
 				echo "  - $version"
-			done
+			done; then
+				:
+			else
+				print_warning "Unable to retrieve available Redis versions"
+			fi
 			exit 1
 		fi
 	fi
@@ -638,21 +674,25 @@ get_user_input() {
 	# Select Redis version (only if not provided)
 	if [[ -z "$REDIS_VERSION" ]]; then
 		local redis_versions
-		redis_versions=$(get_redis_versions)
-		if [[ -n "$redis_versions" ]]; then
-			local redis_version_array=()
-			while IFS= read -r line; do
-				[[ -n "$line" ]] && redis_version_array+=("$line")
-			done <<<"$redis_versions"
+		if redis_versions=$(get_redis_versions); then
+			if [[ -n "$redis_versions" ]]; then
+				local redis_version_array=()
+				while IFS= read -r line; do
+					[[ -n "$line" ]] && redis_version_array+=("$line")
+				done <<<"$redis_versions"
 
-			if [[ ${#redis_version_array[@]} -gt 0 ]]; then
-				REDIS_VERSION=$(select_from_list "Select Redis version:" "${redis_version_array[@]}" "false")
+				if [[ ${#redis_version_array[@]} -gt 0 ]]; then
+					REDIS_VERSION=$(select_from_list "Select Redis version:" "${redis_version_array[@]}" "false")
+				else
+					print_error "Unable to get Redis version list"
+					exit 1
+				fi
 			else
-				print_warning "Unable to get Redis version list"
+				print_error "Unable to get Redis version list"
 				exit 1
 			fi
 		else
-			print_warning "Unable to get Redis version list"
+			print_error "Failed to retrieve Redis versions"
 			exit 1
 		fi
 	else
@@ -661,9 +701,13 @@ get_user_input() {
 		if ! validate_redis_version "$REDIS_VERSION"; then
 			print_error "Invalid Redis version specified: $REDIS_VERSION"
 			print_info "Available Redis versions:"
-			get_redis_versions | while IFS= read -r version; do
+			if get_redis_versions | while IFS= read -r version; do
 				echo "  - $version"
-			done
+			done; then
+				:
+			else
+				print_warning "Unable to retrieve available Redis versions"
+			fi
 			exit 1
 		fi
 	fi
@@ -835,29 +879,48 @@ get_service_nodeport() {
 	local service_name="$1"
 	local namespace="$2"
 	local unit_index="$3"
+	local full_service_name="$service_name-$unit_index-svc"
 	
-	print_info "Getting NodePort for $service_name unit-$unit_index..."
+	print_info "Getting NodePort for $service_name unit-$unit_index..." >&2
+	print_info "Full service name: $full_service_name" >&2
 	
-	# Wait for service to be created
+	# First check if service exists
+	if ! kubectl get service "$full_service_name" -n "$namespace" >/dev/null 2>&1; then
+		print_error "Service $full_service_name does not exist in namespace $namespace" >&2
+		print_info "Available services in namespace $namespace:" >&2
+		kubectl get services -n "$namespace" --no-headers -o custom-columns=":metadata.name" 2>/dev/null || print_error "Failed to list services" >&2
+		return 1
+	fi
+	
+	# Wait for service to be created and have NodePort
 	local max_attempts=30
 	local attempt=0
 	
 	while [[ $attempt -lt $max_attempts ]]; do
 		local nodeport
-		nodeport=$(kubectl get service "$service_name-$unit_index" -n "$namespace" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+		nodeport=$(kubectl get service "$full_service_name" -n "$namespace" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
 		
-		if [[ -n "$nodeport" && "$nodeport" != "null" ]]; then
-			print_success "NodePort for $service_name unit-$unit_index: $nodeport"
+		print_info "Attempt $((attempt + 1))/$max_attempts: Retrieved NodePort value: '${nodeport:-EMPTY}'" >&2
+		
+		if [[ -n "$nodeport" && "$nodeport" != "null" && "$nodeport" != "<no value>" ]]; then
+			print_success "NodePort for $service_name unit-$unit_index: $nodeport" >&2
 			echo "$nodeport"
 			return 0
 		fi
 		
-		print_info "Waiting for service $service_name-$unit_index to be ready... (attempt $((attempt + 1))/$max_attempts)"
+		print_info "Waiting for service $full_service_name to have NodePort... (attempt $((attempt + 1))/$max_attempts)" >&2
+		# Show service details for debugging
+		if [[ $((attempt % 5)) -eq 0 ]]; then
+			print_info "Service details:" >&2
+			kubectl get service "$full_service_name" -n "$namespace" -o yaml 2>/dev/null | head -20 || print_error "Failed to get service details" >&2
+		fi
 		sleep 5
 		((attempt++))
 	done
 	
-	print_error "Failed to get NodePort for $service_name unit-$unit_index after $max_attempts attempts"
+	print_error "Failed to get NodePort for $service_name unit-$unit_index after $max_attempts attempts" >&2
+	print_error "Final service status:" >&2
+	kubectl get service "$full_service_name" -n "$namespace" -o wide 2>/dev/null || print_error "Failed to get final service status" >&2
 	return 1
 }
 
@@ -866,17 +929,44 @@ update_yaml_with_nodeports() {
 	local redis_service_name="demo-redis-$REDIS_NAME_SUFFIX"
 	
 	print_info "Updating YAML files with NodePort information..."
+	print_info "Redis service name: $redis_service_name"
+	print_info "Namespace: $NAMESPACE"
 	
 	# Get NodePorts for all Redis units
 	local unit_0_nodeport unit_1_nodeport unit_2_nodeport
+	print_info "Getting NodePort for unit-0..."
 	unit_0_nodeport=$(get_service_nodeport "$redis_service_name" "$NAMESPACE" "0")
-	unit_1_nodeport=$(get_service_nodeport "$redis_service_name" "$NAMESPACE" "1")
-	unit_2_nodeport=$(get_service_nodeport "$redis_service_name" "$NAMESPACE" "2")
+	local unit_0_result=$?
 	
-	if [[ -z "$unit_0_nodeport" || -z "$unit_1_nodeport" || -z "$unit_2_nodeport" ]]; then
-		print_error "Failed to get all required NodePorts"
+	print_info "Getting NodePort for unit-1..."
+	unit_1_nodeport=$(get_service_nodeport "$redis_service_name" "$NAMESPACE" "1")
+	local unit_1_result=$?
+	
+	print_info "Getting NodePort for unit-2..."
+	unit_2_nodeport=$(get_service_nodeport "$redis_service_name" "$NAMESPACE" "2")
+	local unit_2_result=$?
+	
+	# Check if any NodePort retrieval failed
+	if [[ $unit_0_result -ne 0 || $unit_1_result -ne 0 || $unit_2_result -ne 0 ]]; then
+		print_error "Failed to get NodePorts from one or more Redis services:"
+		print_error "  Unit-0 result: $unit_0_result (NodePort: ${unit_0_nodeport:-N/A})"
+		print_error "  Unit-1 result: $unit_1_result (NodePort: ${unit_1_nodeport:-N/A})"
+		print_error "  Unit-2 result: $unit_2_result (NodePort: ${unit_2_nodeport:-N/A})"
 		return 1
 	fi
+	
+	if [[ -z "$unit_0_nodeport" || -z "$unit_1_nodeport" || -z "$unit_2_nodeport" ]]; then
+		print_error "One or more NodePorts are empty:"
+		print_error "  Unit-0 NodePort: ${unit_0_nodeport:-EMPTY}"
+		print_error "  Unit-1 NodePort: ${unit_1_nodeport:-EMPTY}"
+		print_error "  Unit-2 NodePort: ${unit_2_nodeport:-EMPTY}"
+		return 1
+	fi
+	
+	print_success "Successfully retrieved all NodePorts:"
+	print_success "  Unit-0 NodePort: $unit_0_nodeport"
+	print_success "  Unit-1 NodePort: $unit_1_nodeport"
+	print_success "  Unit-2 NodePort: $unit_2_nodeport"
 	
 	# Escape NodePorts for sed
 	local escaped_unit_0 escaped_unit_1 escaped_unit_2
@@ -975,20 +1065,37 @@ wait_for_resource() {
 				fi
 				;;
 			"unitset")
-				local ready_replicas replicas
-				ready_replicas=$(kubectl get unitset "$resource_name" -n "$namespace" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
-				replicas=$(kubectl get unitset "$resource_name" -n "$namespace" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
+				# Check if resource exists
+				if ! kubectl get unitset "$resource_name" -n "$namespace" >/dev/null 2>&1; then
+					print_info "UnitSet $resource_name does not exist yet, waiting..." >&2
+					continue
+				fi
 				
-				if [[ "$ready_replicas" == "$replicas" && "$replicas" != "0" ]]; then
-					print_success "UnitSet $resource_name is ready ($ready_replicas/$replicas replicas)"
+				local ready_units total_units
+				ready_units=$(kubectl get unitset "$resource_name" -n "$namespace" -o json 2>/dev/null | jq -r '.status.readyUnits // 0')
+				total_units=$(kubectl get unitset "$resource_name" -n "$namespace" -o json 2>/dev/null | jq -r '.spec.units // 0')
+				
+				# Handle empty values
+				if [[ -z "$ready_units" ]]; then
+					ready_units=0
+				fi
+				if [[ -z "$total_units" ]]; then
+					total_units=0
+				fi
+				
+				print_info "UnitSet $resource_name status: ready=$ready_units, desired=$total_units" >&2
+				
+				# Check if all units are ready
+				if [[ "$ready_units" -gt 0 && "$total_units" -gt 0 && "$ready_units" -eq "$total_units" ]]; then
+					print_success "UnitSet $resource_name is ready"
 					return 0
 				fi
 				;;
 			"redisreplication")
 				local status
-				status=$(kubectl get redisreplication "$resource_name" -n "$namespace" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-				if [[ "$status" == "Running" ]]; then
-					print_success "RedisReplication $resource_name is running"
+				ready=$(kubectl get redisreplication "$resource_name" -n "$namespace" -o jsonpath='{.status.ready}' 2>/dev/null || echo "")
+				if [[ "$ready" == "true" ]]; then
+					print_success "RedisReplication $resource_name is ready"
 					return 0
 				fi
 				;;
@@ -1060,7 +1167,7 @@ deploy_redis_sentinel() {
 	fi
 
 	# Step 1: Generate Secret
-	if ! deploy_step "1" "Generate Secret" "1-gen-secret.yaml" "job" "gen-redis-sentinel-sg-demo-secret" "120" "true"; then
+	if ! deploy_step "1" "Generate Secret" "1-gen-secret.yaml" "job" "generate-redis-sentinel-secret-job" "120" "true"; then
 		return 1
 	fi
 
@@ -1069,19 +1176,32 @@ deploy_redis_sentinel() {
 		return 1
 	fi
 
+	# Update YAML files with NodePort information before step 3.0
+	print_info "========================================"
+	print_info "Getting NodePort information and updating templates"
+	print_info "========================================"
+	if [[ "$DRY_RUN" != "true" ]]; then
+		if ! update_yaml_with_nodeports; then
+			print_error "Failed to get NodePort information and update templates"
+			print_error "This may be due to:"
+			print_error "  1. Redis services not yet available"
+			print_error "  2. Network connectivity issues"
+			print_error "  3. Insufficient permissions to access services"
+			print_error "Please check the Redis UnitSet status and try again"
+			return 1
+		fi
+		print_success "NodePort information update completed"
+	else
+		print_info "DRY RUN: Would get NodePort information from Redis services and update:"
+		print_info "  - 3.0-redis-replication.yaml"
+		print_info "  - 3.1-redis-replication_patch.yaml"
+		print_info "Note: NodePort placeholders (<unit-X_nodeport>) will be replaced with actual values"
+	fi
+	echo
+
 	# Step 3.0: Deploy Redis Replication
 	if ! deploy_step "3.0" "Create Redis Replication" "3.0-redis-replication.yaml" "redisreplication" "demo-redis-$REDIS_NAME_SUFFIX-replication" "180" "true"; then
 		return 1
-	fi
-
-	# Update YAML files with NodePort information before step 3.1
-	if [[ "$DRY_RUN" != "true" ]]; then
-		print_info "========================================"
-		print_info "Getting NodePort information and updating template"
-		print_info "========================================"
-		update_yaml_with_nodeports
-		print_success "NodePort information update completed"
-		echo
 	fi
 
 	# Step 3.1 & 4: Deploy Redis Replication Patch and Sentinel simultaneously

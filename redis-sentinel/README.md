@@ -17,6 +17,56 @@ tool automates the entire Redis Sentinel cluster deployment process, including:
 - NodePort service exposure
 - Comprehensive Python demo tool for cluster testing and demonstration
 
+## Quick Start
+
+### 1. Deploy Redis Sentinel Cluster
+
+```bash
+# Download script directly
+curl -sSL \
+  https://raw.githubusercontent.com/upmio/demo/main/redis-sentinel/deploy-redis-sentinel.sh \
+  -o deploy-redis-sentinel.sh
+chmod +x deploy-redis-sentinel.sh
+./deploy-redis-sentinel.sh
+```
+
+### 2. Interactive Deployment
+
+```bash
+# Run interactive deployment
+./deploy-redis-sentinel.sh
+
+# Follow prompts to enter configuration:
+# - Namespace (default: default)
+# - Redis version (default: 7.0.14)
+# - Storage class name (default: auto-detect)
+```
+
+### 3. Non-Interactive Deployment
+
+```bash
+# Deploy directly with command-line parameters
+./deploy-redis-sentinel.sh \
+  --namespace redis-production \
+  --redis-version 7.0.14 \
+  --storage-class fast-ssd
+```
+
+### 4. Test with Python Demo Tool
+
+```bash
+# Install Python dependencies
+pip install redis colorama
+
+# Run the demo tool
+python redis-sentinel-demo.py
+
+# Follow interactive prompts to:
+# - Configure Sentinel connection
+# - Test cluster functionality
+# - Demonstrate high availability features
+```
+
 ## Prerequisites
 
 ### System Requirements

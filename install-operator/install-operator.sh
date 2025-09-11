@@ -567,7 +567,7 @@ post_install_checks() {
 # Main function
 main() {
     print_separator
-    print_info "UPM (Universal Package Manager) Installation Script"
+    print_info "UPM operators Installation Script"
     print_info "Version: 1.0.0"
     print_info "Description: Install UPM operators in Kubernetes cluster"
     print_separator

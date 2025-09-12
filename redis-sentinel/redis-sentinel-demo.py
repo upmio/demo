@@ -114,8 +114,24 @@ class RedisSentinelManager:
         """Get master node information"""
         try:
             masters = self.sentinel.sentinel_masters()
-            if self.config.master_name in masters:
+            # 确保返回值是字典类型
+            if isinstance(masters, dict) and self.config.master_name in masters:
                 return masters[self.config.master_name]
+            elif not isinstance(masters, dict):
+                ColorPrinter.warning(f"Unexpected return type from sentinel_masters: {type(masters)}, trying alternative method")
+                # 尝试直接获取master信息
+                try:
+                    master_addr = self.sentinel.discover_master(self.config.master_name)
+                    if master_addr:
+                        return {
+                            'ip': master_addr[0],
+                            'port': master_addr[1],
+                            'flags': 'master',
+                            'num-slaves': 'unknown',
+                            'num-other-sentinels': 'unknown'
+                        }
+                except Exception as inner_e:
+                    ColorPrinter.warning(f"Alternative method also failed: {inner_e}")
             return {}
         except Exception as e:
             ColorPrinter.error(f"Failed to get master node information: {e}")
@@ -124,7 +140,52 @@ class RedisSentinelManager:
     def get_slaves_info(self) -> List[Dict[str, Any]]:
         """Get slave nodes information"""
         try:
-            return self.sentinel.sentinel_slaves(self.config.master_name)
+            result = self.sentinel.sentinel_slaves(self.config.master_name)
+            # 确保返回值是列表类型
+            if isinstance(result, list):
+                return result
+            else:
+                ColorPrinter.warning(f"Unexpected return type from sentinel_slaves: {type(result)}, trying alternative method")
+                # 尝试通过master连接获取复制信息
+                try:
+                    info = self.redis_client.info('replication')
+                    slaves: List[Dict[str, Any]] = []
+                    slave_count = info.get('connected_slaves', 0)
+                    try:
+                        slave_count = int(slave_count)
+                    except Exception:
+                        slave_count = 0
+                    for i in range(slave_count):
+                        slave_key = f'slave{i}'
+                        entry = info.get(slave_key)
+                        if not entry:
+                            continue
+                        slave_data: Dict[str, Any] = {}
+                        # 兼容字符串与字典两种格式
+                        if isinstance(entry, str):
+                            # 解析字符串: ip=x.x.x.x,port=xxxx,state=online,offset=xxx,lag=x
+                            for part in entry.split(','):
+                                if '=' in part:
+                                    k, v = part.split('=', 1)
+                                    slave_data[k.strip()] = v.strip()
+                        elif isinstance(entry, dict):
+                            for k, v in entry.items():
+                                slave_data[str(k)] = v
+                        else:
+                            # 兜底：尽最大可能提取常用字段
+                            if hasattr(entry, 'get'):
+                                slave_data['ip'] = entry.get('ip', 'unknown')
+                                slave_data['port'] = entry.get('port', 'unknown')
+                                slave_data['state'] = entry.get('state', 'unknown')
+                        slaves.append({
+                            'ip': str(slave_data.get('ip', 'unknown')),
+                            'port': str(slave_data.get('port', 'unknown')),
+                            'flags': f"slave,{slave_data.get('state', 'unknown')}"
+                        })
+                    return slaves
+                except Exception as inner_e:
+                    ColorPrinter.warning(f"Alternative method also failed: {inner_e}")
+                return []
         except Exception as e:
             ColorPrinter.error(f"Failed to get slave nodes information: {e}")
             return []
@@ -132,7 +193,21 @@ class RedisSentinelManager:
     def get_sentinels_info(self) -> List[Dict[str, Any]]:
         """Get Sentinel nodes information"""
         try:
-            return self.sentinel.sentinel_sentinels(self.config.master_name)
+            result = self.sentinel.sentinel_sentinels(self.config.master_name)
+            # 确保返回值是列表类型
+            if isinstance(result, list):
+                return result
+            else:
+                ColorPrinter.warning(f"Unexpected return type from sentinel_sentinels: {type(result)}, using configured sentinels")
+                # 使用配置的sentinel节点信息
+                sentinels = []
+                for i, (host, port) in enumerate(self.config.sentinels):
+                    sentinels.append({
+                        'ip': host,
+                        'port': str(port),
+                        'flags': 'sentinel'
+                    })
+                return sentinels
         except Exception as e:
             ColorPrinter.error(f"Failed to get Sentinel nodes information: {e}")
             return []
@@ -444,17 +519,25 @@ class RedisSentinelDemo:
         
         # Slave node information
         slaves_info = self.sentinel_manager.get_slaves_info()
-        if slaves_info:
+        if slaves_info and isinstance(slaves_info, list):
             ColorPrinter.success(f"Slave node information ({len(slaves_info)} nodes):")
             for i, slave in enumerate(slaves_info, 1):
                 print(f"  Slave{i}: {slave.get('ip', 'N/A')}:{slave.get('port', 'N/A')} ({slave.get('flags', 'N/A')})")
+        elif slaves_info:
+            ColorPrinter.warning("Slave node information: Unable to retrieve (connection issue)")
+        else:
+            ColorPrinter.info("Slave node information: No slave nodes found")
         
         # Sentinel node information
         sentinels_info = self.sentinel_manager.get_sentinels_info()
-        if sentinels_info:
+        if sentinels_info and isinstance(sentinels_info, list):
             ColorPrinter.success(f"Sentinel node information ({len(sentinels_info)} nodes):")
             for i, sentinel in enumerate(sentinels_info, 1):
                 print(f"  Sentinel{i}: {sentinel.get('ip', 'N/A')}:{sentinel.get('port', 'N/A')}")
+        elif sentinels_info:
+            ColorPrinter.warning("Sentinel node information: Unable to retrieve (connection issue)")
+        else:
+            ColorPrinter.info("Sentinel node information: No sentinel nodes found")
     
     def demo_session_management(self):
         """Session management demo"""
@@ -781,8 +864,22 @@ class RedisSentinelDemo:
                     
                     # Test Sentinel connection
                     masters = self.sentinel_manager.sentinel.sentinel_masters()
-                    if masters:
-                        ColorPrinter.success(f"Sentinel connection normal, monitoring {len(masters)} master nodes")
+                    # 兼容不同返回类型，避免因bool类型导致len()报错
+                    masters_count_str = "unknown"
+                    if isinstance(masters, dict):
+                        masters_count_str = str(len(masters))
+                    elif isinstance(masters, list):
+                        masters_count_str = str(len(masters))
+                    elif isinstance(masters, bool):
+                        # 某些环境会返回bool，无法统计数量，尝试探测master地址以验证连通性
+                        try:
+                            addr = self.sentinel_manager.sentinel.discover_master(self.sentinel_manager.config.master_name)
+                            if addr and isinstance(addr, (list, tuple)):
+                                masters_count_str = "1"
+                        except Exception:
+                            masters_count_str = "unknown"
+                    # 只要调用成功即认为连通，数量未知时以unknown展示
+                    ColorPrinter.success(f"Sentinel connection normal, monitoring {masters_count_str} master nodes")
                     
                     # Show current master node
                     master_info = self.sentinel_manager.get_master_info()

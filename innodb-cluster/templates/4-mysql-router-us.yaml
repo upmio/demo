@@ -3,18 +3,16 @@ kind: UnitSet
 metadata:
   annotations:
     unit-operator.external-service.type: NodePort
-    upm.api/nodeport-ip: 10.37.132.105
-  generation: 1
+    upm.api/nodeport-ip: <nodeport-ip>
   labels:
     upm.api/service-group.name: demo
-    upm.api/service.arch.mode: clone
     upm.api/service.type: mysql-router
-  name: demo-mysql-router-yyy
-  namespace: default
+  name: demo-mysql-router-<router-name-suffix>
+  namespace: <namespace>
 spec:
   type: mysql-router
   units: 2
-  version: 8.0.41
+  version: <version>
   edition: community
   emptyDir:
   - mountPath: /DATA_MOUNT
@@ -29,7 +27,7 @@ spec:
   - name: ADM_USER
     value: root
   - name: MYSQL_SERVICE_NAME
-    value: demo-mysql-xxx
+    value: demo-mysql-<mysql-name-suffix>
   externalService:
     type: NodePort
   podMonitor:

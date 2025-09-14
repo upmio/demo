@@ -1,17 +1,16 @@
 apiVersion: upm.syntropycloud.io/v1alpha2
 kind: UnitSet
 metadata:
-  generation: 1
   labels:
     upm.api/service-group.name: demo
     upm.api/service.arch.mode: group_replication
     upm.api/service.type: mysql
-  name: demo-mysql-xxx
-  namespace: default
+  name: demo-mysql-<mysql-name-suffix>
+  namespace: <namespace>
 spec:
   type: mysql
   units: 3
-  version: 8.0.41
+  version: <version>
   edition: community
   env:
   - name: PROV_USER
@@ -38,8 +37,8 @@ spec:
   - mountPath: /DATA_MOUNT
     name: data
     size: 10Gi
-    storageClassName: lvm-localpv
+    storageClassName: <storageClass-name>
   - mountPath: /LOG_MOUNT
     name: log
     size: 10Gi
-    storageClassName: lvm-localpv
+    storageClassName: <storageClass-name>

@@ -1,0 +1,24 @@
+apiVersion: upm.syntropycloud.io/v1alpha1
+kind: MysqlGroupReplication
+metadata:
+  labels:
+    upm.api/service-group.name: demo
+    upm.api/service.name: demo-mysql-<mysql-name-suffix>
+    upm.io/owner: upm
+  name: demo-mysql-<mysql-name-suffix>-replication
+  namespace: <namespace>
+spec:
+  member:
+  - host: demo-mysql-<mysql-name-suffix>-0.demo-mysql-<mysql-name-suffix>-headless-svc.default
+    name: demo-mysql-<mysql-name-suffix>-0
+    port: 3306
+  - host: demo-mysql-<mysql-name-suffix>-1.demo-mysql-<mysql-name-suffix>-headless-svc.default
+    name: demo-mysql-<mysql-name-suffix>-1
+    port: 3306
+  - host: demo-mysql-<mysql-name-suffix>-2.demo-mysql-<mysql-name-suffix>-headless-svc.default
+    name: demo-mysql-<mysql-name-suffix>-2
+    port: 3306
+  secret:
+    mysql: replication
+    name: innodb-cluster-sg-demo-secret
+    replication: replication

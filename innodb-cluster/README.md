@@ -93,6 +93,9 @@ This script will deploy the following components:
 - **Kubernetes**: v1.29+
 - **kubectl**: Configured and able to access target cluster
 - **Helm**: v3.8+ (for deploying MySQL components)
+- **curl**: For downloading YAML templates
+- **jq**: For JSON processing
+- **sed**: For text processing
 - **Unit Operator**: UPM custom resource definitions and operator
 - **Compose Operator**: UPM custom resource definitions and operator
 - **Storage**: StorageClass supporting dynamic PVC allocation
@@ -130,45 +133,68 @@ chmod +x deploy-innodb-cluster.sh
 ./deploy-innodb-cluster.sh
 
 # Follow prompts to enter configuration:
+# - StorageClass name (auto-detected from available options)
 # - Namespace (default: default)
-# - MySQL version (default: 8.0.41)
-# - Storage size (default: 20Gi)
-# - Storage class name (default: auto-detect)
+# - MySQL version (auto-detected from available versions)
+# - NodePort IP (auto-detected from cluster nodes)
 ```
 
 ### 3. Non-Interactive Deployment
 
 ```bash
-# Deploy directly with command-line parameters
+# Deploy directly with command-line parameters (short form)
 ./deploy-innodb-cluster.sh \
+  -s local-path \
+  -n production \
+  -v 8.0.41 \
+  -i 192.168.1.100
+
+# Deploy with long parameter names
+./deploy-innodb-cluster.sh \
+  --storage-class local-path \
   --namespace production \
   --mysql-version 8.0.41 \
-  --storage-class fast-ssd
+  --nodeport-ip 192.168.1.100
 ```
 
 ## Command Line Parameters
 
 The deployment script supports the following command-line parameters:
 
-| Parameter | Description | Default | Example |
-|-----------|-------------|---------|----------|
-| `--namespace` | Deployment namespace | default | `--namespace mysql-prod` |
-| `--mysql-version` | MySQL version | 8.0.41 | `--mysql-version 8.0.42` |
-| `--storage-class` | StorageClass name | auto-detect | `--storage-class ssd` |
-| `--dry-run` | Preview mode, generate config | false | `--dry-run` |
-| `--help` | Display help information | - | `--help` |
+| Parameter | Short Form | Description | Default | Example |
+|-----------|------------|-------------|---------|----------|
+| `--storage-class` | `-s` | Kubernetes StorageClass name | auto-detect | `-s local-path` |
+| `--namespace` | `-n` | Kubernetes namespace | default | `-n demo` |
+| `--mysql-version` | `-v` | MySQL version to deploy | 8.0.41 | `-v 8.0.42` |
+| `--nodeport-ip` | `-i` | NodePort IP address | auto-detected | `-i 192.168.1.100` |
+| `--dry-run` | `-d` | Show what would be deployed without actually deploying | false | `--dry-run` |
+| `--help` | `-h` | Show help message | - | `--help` |
 
 ### Usage Examples
 
 ```bash
-# Full parameter deployment
-./deploy-innodb-cluster.sh \
-  --namespace mysql-production \
-  --mysql-version 8.0.42 \
-  --storage-class fast-ssd
+# Interactive deployment (recommended)
+./deploy-innodb-cluster.sh
 
-# Preview configuration
-./deploy-innodb-cluster.sh --dry-run
+# Non-interactive deployment with all parameters
+./deploy-innodb-cluster.sh \
+  -s local-path \
+  -n demo \
+  -v 8.0.41 \
+  -i 192.168.1.100
+
+# Using long parameter names
+./deploy-innodb-cluster.sh \
+  --storage-class local-path \
+  --namespace mysql-production \
+  --mysql-version 8.0.42
+
+# Dry run to see what would be deployed
+./deploy-innodb-cluster.sh \
+  -s local-path \
+  -n demo \
+  -v 8.0.41 \
+  --dry-run
 
 # View help
 ./deploy-innodb-cluster.sh --help

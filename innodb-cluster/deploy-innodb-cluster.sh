@@ -150,8 +150,8 @@ download_yaml_templates() {
 	local temp_dir="$1"
 	mkdir -p "$temp_dir"
 
-	# Base URL for YAML templates - can be configured via environment variable
-	local base_url="${YAML_TEMPLATES_BASE_URL:-https://raw.githubusercontent.com/upmio/demo/refs/heads/main/innodb-cluster/templates}"
+	# Base URL for YAML templates - fixed URL
+	local base_url="https://raw.githubusercontent.com/upmio/demo/refs/heads/main/innodb-cluster/templates"
 
 	# List of YAML template files to download
 	local yaml_files=(
@@ -197,7 +197,6 @@ download_yaml_templates() {
 		print_error "  1. Network connectivity"
 		print_error "  2. Repository URL: $base_url"
 		print_error "  3. Template files availability"
-		print_error "You can set custom base URL via: export YAML_TEMPLATES_BASE_URL=<your-url>"
 		exit 1
 	fi
 }

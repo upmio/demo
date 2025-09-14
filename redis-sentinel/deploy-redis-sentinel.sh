@@ -17,8 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR="${SCRIPT_DIR}/temp-redis-sentinel"
 
 # Command line arguments
-DRY_RUN=false
-SHOW_HELP=false
+DRY_RUN="false"
+SHOW_HELP="false"
 
 # YAML file deployment order (in new execution sequence)
 YAML_FILES=(
@@ -67,30 +67,38 @@ sed_inplace() {
 	fi
 }
 
-# Display help information
+# Help information
 show_help() {
-	cat <<EOF
-Redis Sentinel Cluster Automated Deployment Script
+	cat << EOF
+Deploy Redis Sentinel Cluster Script
 
-Usage:
-    $0 [options]
+This script deploys a Redis Sentinel Cluster with Redis Replication using UPM.
+
+Usage: $0 [OPTIONS]
 
 Options:
-    --dry-run                        Display generated YAML content without actual deployment
-    --help                          Show this help information
-    --namespace <namespace>         Specify deployment namespace
-    --storage-class <class>         Specify StorageClass
-    --redis-version <version>       Specify Redis version
+  -s, --storage-class STORAGE_CLASS    Kubernetes StorageClass name
+  -n, --namespace NAMESPACE            Kubernetes namespace
+  -v, --redis-version VERSION          Redis version to deploy
+  -i, --nodeport-ip IP                 NodePort IP address (auto-detected if not specified)
+  -d, --dry-run                        Show what would be deployed without actually deploying
+  -h, --help                           Show this help message
 
 Examples:
-    $0                                                    # Interactive deployment mode
-    $0 --dry-run                                          # Preview mode, display YAML content
-    $0 --namespace redis-system --storage-class local-path  # Non-interactive mode
-    $0 --redis-version 7.0.14                            # Specify version
-    $0 --help                                             # Show help information
+  # Interactive deployment (recommended)
+  $0
 
-Note:
-    NodePort IP will be automatically detected from the first available Kubernetes node.
+  # Non-interactive deployment with all parameters
+  $0 -s local-path -n demo -v 7.0.14 -i 192.168.1.100
+
+  # Dry run to see what would be deployed
+  $0 -s local-path -n demo -v 7.0.14 --dry-run
+
+Notes:
+  - If parameters are not provided, the script will prompt for them interactively
+  - NodePort IP will be auto-detected from cluster nodes if not specified
+  - The script requires kubectl, helm, curl, jq, and sed to be installed
+  - UPM packages will be automatically installed if not present
 
 EOF
 }
@@ -99,46 +107,35 @@ EOF
 parse_arguments() {
 	while [[ $# -gt 0 ]]; do
 		case $1 in
-		--dry-run)
-			DRY_RUN=true
-			shift
-			;;
-		--help | -h)
-			SHOW_HELP=true
-			shift
-			;;
-		--namespace)
-			if [[ -n "${2:-}" ]]; then
-				NAMESPACE="$2"
-				shift 2
-			else
-				print_error "--namespace requires a value"
-				exit 1
-			fi
-			;;
-		--storage-class)
-			if [[ -n "${2:-}" ]]; then
+			-s|--storage-class)
 				STORAGE_CLASS="$2"
 				shift 2
-			else
-				print_error "--storage-class requires a value"
-				exit 1
-			fi
-			;;
-		--redis-version)
-			if [[ -n "${2:-}" ]]; then
+				;;
+			-n|--namespace)
+				NAMESPACE="$2"
+				shift 2
+				;;
+			-v|--redis-version)
 				REDIS_VERSION="$2"
 				shift 2
-			else
-				print_error "--redis-version requires a value"
+				;;
+			-i|--nodeport-ip)
+				NODEPORT_IP="$2"
+				shift 2
+				;;
+			-d|--dry-run)
+				DRY_RUN="true"
+				shift
+				;;
+			-h|--help)
+				SHOW_HELP="true"
+				shift
+				;;
+			*)
+				print_error "Unknown option: $1"
+				show_help
 				exit 1
-			fi
-			;;
-		*)
-			print_error "Unknown parameter: $1"
-			print_error "Use --help to view help information"
-			exit 1
-			;;
+				;;
 		esac
 	done
 }
@@ -158,8 +155,8 @@ download_yaml_templates() {
 	local temp_dir="$1"
 	mkdir -p "$temp_dir"
 
-	# Base URL for YAML templates - can be configured via environment variable
-	local base_url="${YAML_TEMPLATES_BASE_URL:-https://raw.githubusercontent.com/upmio/demo/refs/heads/main/redis-sentinel/templates}"
+	# Base URL for YAML templates - fixed URL
+	local base_url="https://raw.githubusercontent.com/upmio/demo/refs/heads/main/redis-sentinel/templates"
 
 	# List of YAML template files to download
 	local yaml_files=(
@@ -206,7 +203,6 @@ download_yaml_templates() {
 		print_error "  1. Network connectivity"
 		print_error "  2. Repository URL: $base_url"
 		print_error "  3. Template files availability"
-		print_error "You can set custom base URL via: export YAML_TEMPLATES_BASE_URL=<your-url>"
 		exit 1
 	fi
 }

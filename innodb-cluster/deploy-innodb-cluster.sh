@@ -1,38 +1,38 @@
 #!/bin/bash
 
-# InnoDB Cluster Automated Deployment Script
-# Deploy InnoDB Cluster services after installing core Operator components
+# Deploy InnoDB Cluster Script
+# This script deploys a MySQL InnoDB Cluster with Group Replication and MySQL Router
+# Based on UPM (Unified Platform Management) architecture
 
 set -euo pipefail
 
-# Color definitions
+# Color definitions for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Script configuration
+# Configuration variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-YAML_DIR="${SCRIPT_DIR}/example"
-TEMP_DIR="${SCRIPT_DIR}/temp-innodb-cluster"
+TEMP_DIR="$(mktemp -d)"
+DRY_RUN="false"
+SHOW_HELP="false"
 
 # Command line arguments
-DRY_RUN=false
-SHOW_HELP=false
-
-# YAML file deployment order
-YAML_FILES=(
-	"gen-secret.yaml"
-	"mysql-us.yaml"
-	"mysql-group-replication.yaml"
-	"mysql-router-us.yaml"
-)
-
-# Global variables - set via command line arguments, fallback to interactive input
 STORAGE_CLASS=""
 NAMESPACE=""
 MYSQL_VERSION=""
+NODEPORT_IP=""
+
+# YAML template files list
+YAML_FILES=(
+	"0-project.yaml"
+	"1-gen-secret.yaml"
+	"2-mysql-us.yaml"
+	"3-mysql-group-replication.yaml"
+	"4-mysql-router-us.yaml"
+)
 
 # Print functions
 print_info() {
@@ -48,48 +48,52 @@ print_warning() {
 }
 
 print_error() {
-	echo -e "${RED}[ERROR]${NC} $1"
+	echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
-# Cross-platform in-place sed helper (GNU vs BSD)
+# Cross-platform sed helper
 sed_inplace() {
-	local script="$1"
-	local file="$2"
-	# Detect OS type for sed compatibility
-	if [[ "$(uname)" == "Darwin" ]]; then
-		# macOS uses BSD sed
-		sed -i "" "$script" "$file"
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		# macOS
+		sed -i '' "$@"
 	else
-		# Linux uses GNU sed
-		sed -i "$script" "$file"
+		# Linux
+		sed -i "$@"
 	fi
 }
 
-
-# Display help information
+# Help information
 show_help() {
-	cat <<EOF
-InnoDB Cluster Automated Deployment Script
+	cat << EOF
+Deploy InnoDB Cluster Script
 
-Usage:
-    $0 [options]
+This script deploys a MySQL InnoDB Cluster with Group Replication and MySQL Router using UPM.
+
+Usage: $0 [OPTIONS]
 
 Options:
-    --dry-run                        Display generated YAML content without actual deployment
-    --help                          Show this help information
-    --namespace <namespace>         Specify deployment namespace
-    --storage-class <class>         Specify StorageClass
-    --mysql-version <version>       Specify MySQL version (MySQL Router version will automatically match MySQL version)
+  -s, --storage-class STORAGE_CLASS    Kubernetes StorageClass name
+  -n, --namespace NAMESPACE            Kubernetes namespace
+  -v, --mysql-version VERSION          MySQL version to deploy
+  -i, --nodeport-ip IP                 NodePort IP address (auto-detected if not specified)
+  -d, --dry-run                        Show what would be deployed without actually deploying
+  -h, --help                           Show this help message
 
 Examples:
-    $0                                                    # Interactive deployment mode
-    $0 --dry-run                                          # Preview mode, display YAML content
-    $0 --namespace cert-manager --storage-class local-path  # Non-interactive mode
-    $0 --mysql-version 8.0.41                            # Specify version
-    $0 --help                                             # Show help information
+  # Interactive deployment (recommended)
+  $0
 
-Note:
-    NodePort IP will be automatically detected from the first available Kubernetes node.
+  # Non-interactive deployment with all parameters
+  $0 -s local-path -n demo -v 8.0.41 -i 192.168.1.100
+
+  # Dry run to see what would be deployed
+  $0 -s local-path -n demo -v 8.0.41 --dry-run
+
+Notes:
+  - If parameters are not provided, the script will prompt for them interactively
+  - NodePort IP will be auto-detected from cluster nodes if not specified
+  - The script requires kubectl, helm, curl, jq, and sed to be installed
+  - UPM packages will be automatically installed if not present
 
 EOF
 }
@@ -98,60 +102,137 @@ EOF
 parse_arguments() {
 	while [[ $# -gt 0 ]]; do
 		case $1 in
-		--dry-run)
-			DRY_RUN=true
-			shift
-			;;
-		--help | -h)
-			SHOW_HELP=true
-			shift
-			;;
-		--namespace)
-			if [[ -n "${2:-}" ]]; then
-				NAMESPACE="$2"
-				shift 2
-			else
-				print_error "--namespace requires a value"
-				exit 1
-			fi
-			;;
-		--storage-class)
-			if [[ -n "${2:-}" ]]; then
+			-s|--storage-class)
 				STORAGE_CLASS="$2"
 				shift 2
-			else
-				print_error "--storage-class requires a value"
-				exit 1
-			fi
-			;;
-
-		--mysql-version)
-			if [[ -n "${2:-}" ]]; then
+				;;
+			-n|--namespace)
+				NAMESPACE="$2"
+				shift 2
+				;;
+			-v|--mysql-version)
 				MYSQL_VERSION="$2"
 				shift 2
-			else
-				print_error "--mysql-version requires a value"
+				;;
+			-i|--nodeport-ip)
+				NODEPORT_IP="$2"
+				shift 2
+				;;
+			-d|--dry-run)
+				DRY_RUN="true"
+				shift
+				;;
+			-h|--help)
+				SHOW_HELP="true"
+				shift
+				;;
+			*)
+				print_error "Unknown option: $1"
+				show_help
 				exit 1
-			fi
-			;;
-		*)
-			print_error "Unknown parameter: $1"
-			print_error "Use --help to view help information"
-			exit 1
-			;;
+				;;
 		esac
 	done
 }
 
-# Error handling function
+# Cleanup function
 cleanup() {
 	if [[ -d "$TEMP_DIR" ]]; then
-		print_info "Cleaning up temporary files..."
+		print_info "Cleaning up temporary directory: $TEMP_DIR"
 		rm -rf "$TEMP_DIR"
 	fi
 }
 
 trap cleanup EXIT
+
+# Create embedded YAML files
+download_yaml_templates() {
+	local temp_dir="$1"
+	mkdir -p "$temp_dir"
+
+	# Base URL for YAML templates - can be configured via environment variable
+	local base_url="${YAML_TEMPLATES_BASE_URL:-https://raw.githubusercontent.com/upmio/demo/refs/heads/main/innodb-cluster/templates}"
+
+	# List of YAML template files to download
+	local yaml_files=(
+		"0-project.yaml"
+		"1-gen-secret.yaml"
+		"2-mysql-us.yaml"
+		"3-mysql-group-replication.yaml"
+		"4-mysql-router-us.yaml"
+	)
+
+	print_info "Downloading YAML templates from remote repository..."
+
+	# Download each YAML template file
+	local download_success=true
+	for yaml_file in "${yaml_files[@]}"; do
+		local file_url="${base_url}/${yaml_file}"
+		local target_file="${temp_dir}/${yaml_file}"
+
+		print_info "Downloading ${yaml_file}..."
+
+		# Download with curl, follow redirects, fail on HTTP errors
+		if curl -sSL --fail "$file_url" -o "$target_file"; then
+			print_success "Successfully downloaded ${yaml_file}"
+		else
+			print_error "Failed to download ${yaml_file} from ${file_url}"
+			download_success=false
+			break
+		fi
+
+		# Verify file was downloaded and is not empty
+		if [[ ! -s "$target_file" ]]; then
+			print_error "Downloaded file ${yaml_file} is empty or corrupted"
+			download_success=false
+			break
+		fi
+	done
+
+	# Check if all downloads were successful
+	if [[ "$download_success" == "true" ]]; then
+		print_success "All YAML templates downloaded successfully to $temp_dir"
+	else
+		print_error "YAML template download failed. Please check:"
+		print_error "  1. Network connectivity"
+		print_error "  2. Repository URL: $base_url"
+		print_error "  3. Template files availability"
+		print_error "You can set custom base URL via: export YAML_TEMPLATES_BASE_URL=<your-url>"
+		exit 1
+	fi
+}
+
+# Generate random identifier
+generate_random_identifier() {
+	local length="${1:-5}"
+	local chars="abcdefghijklmnopqrstuvwxyz0123456789"
+	local result=""
+	
+	# Generate random string using $RANDOM
+	for ((i=0; i<length; i++)); do
+		local random_index=$((RANDOM % ${#chars}))
+		result+="${chars:$random_index:1}"
+	done
+	
+	echo "$result"
+}
+
+# Escape special characters for sed replacement
+escape_sed_replacement() {
+	local input="$1"
+	# Escape backslashes, forward slashes, and ampersands for sed
+	printf '%s\n' "$input" | sed 's/[\\&/]/\\&/g'
+}
+
+# Prepare YAML files
+prepare_yaml_files() {
+	print_info "Preparing YAML configuration files..."
+
+	# Create temporary directory and download YAML templates
+	download_yaml_templates "$TEMP_DIR"
+
+	print_success "YAML files prepared in temporary directory: $TEMP_DIR"
+}
 
 # Check StorageClass
 check_storageclass() {
@@ -171,33 +252,18 @@ check_storageclass() {
 	print_success "Found $available_sc available StorageClass(es)"
 }
 
-# Check PodMonitor CRD
-check_podmonitor_crd() {
-	print_info "Checking Prometheus PodMonitor CRD..."
-
-	if kubectl get crd podmonitors.monitoring.coreos.com &>/dev/null; then
-		print_success "Prometheus detected (PodMonitor CRD exists)"
-	else
-		print_warning "Prometheus not detected (PodMonitor CRD does not exist)"
-		print_warning "This may affect monitoring functionality, recommend installing Prometheus Operator"
-		print_warning "Installation example:"
-		echo "  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts"
-		echo "  helm install prometheus prometheus-community/kube-prometheus-stack"
-		echo
-	fi
-}
-
 # Get available MySQL version list
 get_mysql_versions() {
 	# Get MySQL related versions from UPM packages
 	local mysql_versions
-	mysql_versions=$(helm search repo upm-packages | grep "mysql-community-" | awk '{print $3}' | sort -V -r || echo "")
+	mysql_versions=$(helm search repo upm-packages | grep "mysql" | grep -v "mysql-router" | awk '{print $3}' | sort -V -r || echo "")
 
 	if [[ -z "$mysql_versions" ]]; then
-		# Provide default version based on available packages
-		echo "8.0.41"
+		print_error "Unable to get MySQL version list" >&2
+		return 1
 	else
 		echo "$mysql_versions"
+		return 0
 	fi
 }
 
@@ -211,7 +277,9 @@ validate_mysql_version() {
 	
 	# Get available MySQL versions
 	local available_versions
-	available_versions=$(get_mysql_versions)
+	if ! available_versions=$(get_mysql_versions); then
+		return 1
+	fi
 	
 	# Check if the provided version is in the available versions list
 	while IFS= read -r available_version; do
@@ -221,46 +289,6 @@ validate_mysql_version() {
 	done <<< "$available_versions"
 	
 	return 1
-}
-
-# Get available MySQL Router version list
-
-# Check dependencies
-check_dependencies() {
-	print_info "Checking dependencies..."
-
-	local deps=("kubectl" "sed" "helm" "curl" "jq")
-	for dep in "${deps[@]}"; do
-		if ! command -v "$dep" &>/dev/null; then
-			print_error "Missing dependency: $dep"
-			if [[ "$dep" == "helm" ]]; then
-				print_error "Please install Helm first: https://helm.sh/docs/intro/install/"
-			fi
-			if [[ "$dep" == "curl" ]]; then
-				print_error "Please install curl first or ensure it's available in PATH"
-			fi
-			if [[ "$dep" == "jq" ]]; then
-				print_error "Please install jq first: https://stedolan.github.io/jq/"
-			fi
-			exit 1
-		fi
-	done
-
-	# Check kubectl connection
-	if ! kubectl cluster-info &>/dev/null; then
-		print_error "Unable to connect to Kubernetes cluster"
-		exit 1
-	fi
-
-	print_success "Basic dependency check passed"
-
-	# Check StorageClass
-	check_storageclass
-
-	# Check PodMonitor CRD
-	check_podmonitor_crd
-
-	print_success "All dependency checks completed"
 }
 
 # Install UPM package components for specific MySQL version
@@ -274,7 +302,7 @@ install_upm_packages() {
 	
 	print_info "Installing UPM package components for MySQL version $mysql_version..."
 
-	local upm_script="${SCRIPT_DIR}/upm-pkg-mgm.sh"
+	local upm_script="${SCRIPT_DIR}/../upm-pkg-mgm.sh"
 
 	# If script doesn't exist, try to download
 	if [[ ! -f "$upm_script" ]]; then
@@ -316,27 +344,67 @@ install_upm_packages() {
 	fi
 }
 
-# Check YAML files
-check_yaml_files() {
-	print_info "Checking YAML configuration files..."
-
-	local missing_files=()
-
-	if [[ ! -d "$YAML_DIR" ]]; then
-		print_warning "YAML directory not found: $YAML_DIR"
+# Check and add helm repository if needed
+check_helm_repo() {
+	print_info "Checking helm repository..."
+	
+	# Check if upm-packages repo exists
+	if helm repo list 2>/dev/null | grep -q "upm-packages"; then
+		print_success "Helm repository 'upm-packages' already exists"
+		return 0
+	fi
+	
+	print_info "Adding helm repository 'upm-packages'..."
+	if helm repo add upm-packages https://upmio.github.io/upm-packages; then
+		print_success "Successfully added helm repository 'upm-packages'"
+		# Update repo to ensure it's accessible
+		if helm repo update; then
+			print_success "Helm repositories updated successfully"
+		else
+			print_warning "Failed to update helm repositories, but repo was added"
+		fi
 	else
-		for yaml_file in "${YAML_FILES[@]}"; do
-			if [[ ! -f "$YAML_DIR/$yaml_file" ]]; then
-				missing_files+=("$yaml_file")
+		print_error "Failed to add helm repository 'upm-packages'"
+		print_error "Please check your network connection and try again"
+		exit 1
+	fi
+}
+
+check_dependencies() {
+	print_info "Checking dependencies..."
+
+	local deps=("kubectl" "sed" "helm" "curl" "jq")
+	for dep in "${deps[@]}"; do
+		if ! command -v "$dep" &>/dev/null; then
+			print_error "Missing dependency: $dep"
+			if [[ "$dep" == "helm" ]]; then
+				print_error "Please install Helm first: https://helm.sh/docs/intro/install/"
 			fi
-		done
+			if [[ "$dep" == "curl" ]]; then
+				print_error "Please install curl first or ensure it's available in PATH"
+			fi
+			if [[ "$dep" == "jq" ]]; then
+				print_error "Please install jq first: https://stedolan.github.io/jq/"
+			fi
+			exit 1
+		fi
+	done
+
+	# Check kubectl connection
+	if ! kubectl cluster-info &>/dev/null; then
+		print_error "Unable to connect to Kubernetes cluster"
+		exit 1
 	fi
 
-	if [[ ${#missing_files[@]} -gt 0 || ! -d "$YAML_DIR" ]]; then
-		print_warning "Local YAML templates missing. They will be downloaded automatically during preparation."
-	else
-		print_success "Local YAML templates found"
-	fi
+	print_success "Basic dependency check passed"
+
+	# Check and add helm repository
+	check_helm_repo
+
+	# Check StorageClass
+	check_storageclass
+
+	print_success "All dependency checks completed"
 }
 
 # IP address format validation
@@ -400,9 +468,6 @@ auto_detect_nodeport_ip() {
 	NODEPORT_IP="127.0.0.1"
 	print_info "NodePort IP set to: $NODEPORT_IP"
 }
-
-# Global variable for NodePort IP
-NODEPORT_IP=""
 
 # Numeric selection menu
 select_from_list() {
@@ -546,6 +611,10 @@ check_required_parameters() {
 		missing_params+=("Namespace")
 	fi
 
+	if [[ -z "$MYSQL_VERSION" ]]; then
+		missing_params+=("MySQL Version")
+	fi
+
 	# NodePort IP will be auto-detected, no need to check
 
 	if [[ ${#missing_params[@]} -eq 0 ]]; then
@@ -571,13 +640,68 @@ validate_parameters() {
 		fi
 	fi
 
-	# Namespace validation removed - Project object will automatically create namespace if it doesn't exist
+	# Validate MySQL version
+	if [[ -n "$MYSQL_VERSION" ]]; then
+		if ! validate_mysql_version "$MYSQL_VERSION"; then
+			print_error "Invalid MySQL version specified: $MYSQL_VERSION"
+			print_info "Available MySQL versions:"
+			if get_mysql_versions | while IFS= read -r version; do
+				echo "  - $version"
+			done; then
+				:
+			else
+				print_warning "Unable to retrieve available MySQL versions"
+			fi
+			exit 1
+		fi
+	fi
 
 	print_success "Parameter validation passed"
 }
 
 # Interactive parameter input
 get_user_input() {
+	# Select MySQL version (only if not provided)
+	if [[ -z "$MYSQL_VERSION" ]]; then
+		local mysql_versions
+		if mysql_versions=$(get_mysql_versions); then
+			if [[ -n "$mysql_versions" ]]; then
+				local mysql_version_array=()
+				while IFS= read -r line; do
+					[[ -n "$line" ]] && mysql_version_array+=("$line")
+				done <<<"$mysql_versions"
+
+				if [[ ${#mysql_version_array[@]} -gt 0 ]]; then
+					MYSQL_VERSION=$(select_from_list "Select MySQL version:" "${mysql_version_array[@]}" "false")
+				else
+					print_error "Unable to get MySQL version list"
+					exit 1
+				fi
+			else
+				print_error "Unable to get MySQL version list"
+				exit 1
+			fi
+		else
+			print_error "Failed to retrieve MySQL versions"
+			exit 1
+		fi
+	else
+		print_info "MySQL Version already specified: $MYSQL_VERSION"
+		# Validate provided MySQL version
+		if ! validate_mysql_version "$MYSQL_VERSION"; then
+			print_error "Invalid MySQL version specified: $MYSQL_VERSION"
+			print_info "Available MySQL versions:"
+			if get_mysql_versions | while IFS= read -r version; do
+				echo "  - $version"
+			done; then
+				:
+			else
+				print_warning "Unable to retrieve available MySQL versions"
+			fi
+			exit 1
+		fi
+	fi
+
 	# Display current parameter status
 	print_info "Current parameter configuration:"
 	if [[ -n "$STORAGE_CLASS" ]]; then
@@ -615,7 +739,6 @@ get_user_input() {
 		print_success "  Namespace: $NAMESPACE"
 		print_success "  NodePort IP: $NODEPORT_IP"
 		print_success "  MySQL Version: $MYSQL_VERSION"
-		print_success "  Router Version: $MYSQL_VERSION (automatically matches MySQL version)"
 		echo
 		return 0
 	fi
@@ -668,177 +791,77 @@ get_user_input() {
 		print_info "Namespace already specified: $NAMESPACE"
 	fi
 
-	# NodePort IP will be auto-detected, no interactive input needed
-
-	# Select MySQL version (only if not provided)
-	if [[ -z "$MYSQL_VERSION" ]]; then
-		local mysql_versions
-		mysql_versions=$(get_mysql_versions)
-		if [[ -n "$mysql_versions" ]]; then
-			local mysql_version_array=()
-			while IFS= read -r line; do
-				[[ -n "$line" ]] && mysql_version_array+=("$line")
-			done <<<"$mysql_versions"
-
-			if [[ ${#mysql_version_array[@]} -gt 0 ]]; then
-				MYSQL_VERSION=$(select_from_list "Select MySQL version:" "${mysql_version_array[@]}" "false")
-			else
-				print_warning "Unable to get MySQL version list, using default version 8.0.41"
-				MYSQL_VERSION="8.0.41"
-			fi
-		else
-			print_warning "Unable to get MySQL version list, using default version 8.0.41"
-			MYSQL_VERSION="8.0.41"
-		fi
-	else
-		print_info "MySQL Version already specified: $MYSQL_VERSION"
-		# Validate provided MySQL version
-		if ! validate_mysql_version "$MYSQL_VERSION"; then
-			print_error "Invalid MySQL version specified: $MYSQL_VERSION"
-			print_info "Available MySQL versions:"
-			get_mysql_versions | while IFS= read -r version; do
-				echo "  - $version"
-			done
-			exit 1
-		fi
-	fi
-
-	# MySQL Router version automatically matches MySQL version
-	print_info "MySQL Router version will be automatically set to match MySQL version: $MYSQL_VERSION"
-
 	echo
 	print_success "Parameter configuration completed:"
+    print_success "  MySQL Version: $MYSQL_VERSION"
 	print_success "  StorageClass: $STORAGE_CLASS"
 	print_success "  Namespace: $NAMESPACE"
 	print_success "  NodePort IP: $NODEPORT_IP (auto-detected)"
-	print_success "  MySQL Version: $MYSQL_VERSION"
-	print_success "  Router Version: $MYSQL_VERSION (automatically matches MySQL version)"
 	echo
 }
 
-# Create temporary directory and copy YAML files
-prepare_yaml_files() {
-	print_info "Preparing YAML configuration files..."
+# Validate YAML files
+validate_yaml_files() {
+	print_info "Validating YAML configuration files..."
 
-	# Create temporary directory
-	mkdir -p "$TEMP_DIR"
-
-	# Copy or download YAML files to temporary directory
-	local raw_base="https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/example"
 	for yaml_file in "${YAML_FILES[@]}"; do
-		if [[ -f "$YAML_DIR/$yaml_file" ]]; then
-			cp "$YAML_DIR/$yaml_file" "$TEMP_DIR/"
-			print_info "Using local template: $yaml_file"
+		local file_path="$TEMP_DIR/$yaml_file"
+		if [[ -f "$file_path" ]]; then
+			print_success "✓ $yaml_file found"
 		else
-			print_info "Downloading template: $yaml_file"
-			local url="$raw_base/$yaml_file"
-			if curl -fsSL "$url" -o "$TEMP_DIR/$yaml_file"; then
-				print_success "$yaml_file downloaded successfully"
-			else
-				print_error "Failed to download $yaml_file from $url"
-				exit 1
-			fi
+			print_error "✗ $yaml_file not found in $TEMP_DIR"
+			return 1
 		fi
 	done
 
-	print_success "YAML files preparation completed"
+	print_success "All YAML files validated successfully"
 }
 
-# Generate random identifier for Kubernetes resource names
-# Generates lowercase alphanumeric string (5 characters) compliant with Kubernetes naming conventions
-generate_random_identifier() {
-	local length="${1:-5}"  # Default length is 5
-	
-	# Ensure length is between 5-8
-	if [[ "$length" -lt 5 || "$length" -gt 8 ]]; then
-		length=5
-	fi
-	
-	# Character sets
-	local letters="abcdefghijklmnopqrstuvwxyz"
-	local digits="0123456789"
-	local all_chars="${letters}${digits}"
-	
-	# Generate random string using lowercase letters and numbers
-	# Ensure it starts with a letter (Kubernetes requirement)
-	local first_char_index=$((RANDOM % 26))
-	local first_char="${letters:$first_char_index:1}"
-	
-	local remaining_chars=""
-	for ((i=1; i<length; i++)); do
-		local char_index=$((RANDOM % 36))
-		remaining_chars+="${all_chars:$char_index:1}"
+# Replace placeholders in YAML files
+replace_placeholders() {
+	print_info "Replacing placeholders in YAML files..."
+
+	# Generate random identifiers
+	local mysql_name_suffix
+	local router_name_suffix
+	mysql_name_suffix=$(generate_random_identifier 5)
+	router_name_suffix=$(generate_random_identifier 5)
+
+	# Escape special characters for sed
+	local escaped_namespace escaped_nodeport_ip escaped_storage_class escaped_version
+	escaped_namespace=$(escape_sed_replacement "$NAMESPACE")
+	escaped_nodeport_ip=$(escape_sed_replacement "$NODEPORT_IP")
+	escaped_storage_class=$(escape_sed_replacement "$STORAGE_CLASS")
+	escaped_version=$(escape_sed_replacement "$MYSQL_VERSION")
+	local escaped_mysql_suffix escaped_router_suffix
+	escaped_mysql_suffix=$(escape_sed_replacement "$mysql_name_suffix")
+	escaped_router_suffix=$(escape_sed_replacement "$router_name_suffix")
+
+	# Process each YAML file
+	for yaml_file in "${YAML_FILES[@]}"; do
+		local file_path="$TEMP_DIR/$yaml_file"
+		if [[ -f "$file_path" ]]; then
+			print_info "Processing $yaml_file..."
+			
+			# Replace basic placeholders
+			sed_inplace "s/<namespace>/$escaped_namespace/g" "$file_path"
+			sed_inplace "s/<nodeport-ip>/$escaped_nodeport_ip/g" "$file_path"
+			sed_inplace "s/<storageClass-name>/$escaped_storage_class/g" "$file_path"
+			sed_inplace "s/<version>/$escaped_version/g" "$file_path"
+			sed_inplace "s/<mysql-name-suffix>/$escaped_mysql_suffix/g" "$file_path"
+			sed_inplace "s/<router-name-suffix>/$escaped_router_suffix/g" "$file_path"
+			
+			print_success "✓ $yaml_file processed"
+		fi
 	done
-	
-	echo "${first_char}${remaining_chars}"
-}
 
-# Escape special characters for sed replacement text
-escape_sed_replacement() {
-	local input="$1"
-	# Replace each special character individually to avoid conflicts
-	local result="$input"
-	# Escape backslashes (must be first)
-	result="${result//\\/\\\\}"
-	# Escape forward slashes
-	result="${result//\//\\/}"
-	# Escape ampersands
-	result="${result//&/\\&}"
-	printf '%s' "$result"
-}
+	# Store identifiers for later use
+	MYSQL_NAME_SUFFIX="$mysql_name_suffix"
+	ROUTER_NAME_SUFFIX="$router_name_suffix"
 
-# Replace parameters in YAML files
-replace_yaml_parameters() {
-	print_info "Starting parameter replacement in YAML files..."
-
-	# Generate random identifiers for resource names
-	mysql_random_id=$(generate_random_identifier 5)
-	router_random_id=$(generate_random_identifier 5)
-	
-	print_info "Generated random identifiers:"
-	print_info "  MySQL UnitSet identifier: $mysql_random_id"
-	print_info "  MySQL Router UnitSet identifier: $router_random_id"
-
-	# Escape special characters to avoid sed errors
-	local escaped_namespace=$(escape_sed_replacement "$NAMESPACE")
-	local escaped_storage_class=$(escape_sed_replacement "$STORAGE_CLASS")
-	local escaped_nodeport_ip=$(escape_sed_replacement "$NODEPORT_IP")
-	local escaped_mysql_version=$(escape_sed_replacement "$MYSQL_VERSION")
-	local escaped_router_version=$(escape_sed_replacement "$MYSQL_VERSION")
-	local escaped_mysql_random_id=$(escape_sed_replacement "$mysql_random_id")
-	local escaped_router_random_id=$(escape_sed_replacement "$router_random_id")
-
-	# Replace NAMESPACE environment variable value in gen-secret.yaml
-	# Use pipe delimiter to avoid conflicts with common characters
-	sed_inplace 's|\$default|'"${escaped_namespace}"'|g' "$TEMP_DIR/gen-secret.yaml"
-
-	# Replace parameters in mysql-us.yaml
-	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-us.yaml"
-	sed_inplace 's|storageClassName: lvm-localpv|storageClassName: '"${escaped_storage_class}"'|g' "$TEMP_DIR/mysql-us.yaml"
-	sed_inplace 's|version: [0-9][0-9.]*|version: '"${escaped_mysql_version}"'|g' "$TEMP_DIR/mysql-us.yaml"
-	# Replace xxx with random identifier in mysql UnitSet name
-	sed_inplace 's|demo-mysql-xxx|demo-mysql-'"${escaped_mysql_random_id}"'|g' "$TEMP_DIR/mysql-us.yaml"
-
-	# Replace namespace and service references in mysql-group-replication.yaml
-	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-group-replication.yaml"
-	sed_inplace 's|\.default|.'"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-group-replication.yaml"
-	# Replace xxx with same random identifier in MysqlGroupReplication name and service references
-	sed_inplace 's|demo-mysql-xxx|demo-mysql-'"${escaped_mysql_random_id}"'|g' "$TEMP_DIR/mysql-group-replication.yaml"
-
-	# Replace parameters in mysql-router-us.yaml
-	sed_inplace 's|namespace: default|namespace: '"${escaped_namespace}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
-	sed_inplace 's|upm.api/nodeport-ip: [0-9][0-9.]*|upm.api/nodeport-ip: '"${escaped_nodeport_ip}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
-	sed_inplace 's|version: [0-9][0-9.]*|version: '"${escaped_router_version}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
-	# Replace yyy with random identifier in mysql-router UnitSet name
-	sed_inplace 's|demo-mysql-router-yyy|demo-mysql-router-'"${escaped_router_random_id}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
-	# Replace xxx with mysql random identifier in MYSQL_SERVICE_NAME reference
-	sed_inplace 's|demo-mysql-xxx|demo-mysql-'"${escaped_mysql_random_id}"'|g' "$TEMP_DIR/mysql-router-us.yaml"
-
-	print_success "Parameter replacement completed"
-	print_success "Resource names with random identifiers:"
-	print_success "  MySQL UnitSet: demo-mysql-${mysql_random_id}"
-	print_success "  MySQL Router UnitSet: demo-mysql-router-${router_random_id}"
-	print_success "  MysqlGroupReplication: demo-mysql-${mysql_random_id}"
+	print_success "Placeholder replacement completed"
+	print_info "MySQL name suffix: $MYSQL_NAME_SUFFIX"
+	print_info "Router name suffix: $ROUTER_NAME_SUFFIX"
 }
 
 # Apply YAML file
@@ -846,26 +869,26 @@ apply_yaml_file() {
 	local yaml_file="$1"
 	local file_path="$TEMP_DIR/$yaml_file"
 
-	if [[ "$DRY_RUN" == "true" ]]; then
-		print_info "[DRY-RUN] Displaying configuration file content: $yaml_file"
-		echo "======================================"
-		echo "# File: $yaml_file"
-		echo "======================================"
-		cat "$file_path"
-		echo
-		echo "======================================"
-		echo "# End of file: $yaml_file"
-		echo "======================================"
-		echo
-	else
-		print_info "Applying configuration file: $yaml_file"
+	if [[ ! -f "$file_path" ]]; then
+		print_error "YAML file not found: $file_path"
+		return 1
+	fi
 
-		if kubectl apply -f "$file_path"; then
-			print_success "$yaml_file applied successfully"
-		else
-			print_error "$yaml_file application failed"
-			return 1
-		fi
+	print_info "Applying $yaml_file..."
+
+	if [[ "$DRY_RUN" == "true" ]]; then
+		print_info "=== DRY RUN: Content of $yaml_file ==="
+		cat "$file_path"
+		print_info "=== END OF $yaml_file ==="
+		return 0
+	fi
+
+	if kubectl apply -f "$file_path"; then
+		print_success "✓ $yaml_file applied successfully"
+		return 0
+	else
+		print_error "✗ Failed to apply $yaml_file"
+		return 1
 	fi
 }
 
@@ -874,294 +897,182 @@ wait_for_resource() {
 	local resource_type="$1"
 	local resource_name="$2"
 	local namespace="$3"
-	local timeout="${4:-300}"
+	local timeout="${4:-300}" # Default 5 minutes
 
-	print_info "Waiting for $resource_type/$resource_name to be ready..."
-
-	# For UnitSet, use custom logic to check readyUnits equals units
-	if [[ "$resource_type" == "unitset" ]]; then
-		wait_for_unitset "$resource_name" "$namespace" "$timeout"
-		return $?
-	else
-		# For other resource types, use original logic
-		if kubectl wait --for=condition=Ready "$resource_type/$resource_name" -n "$namespace" --timeout="${timeout}s" 2>/dev/null; then
-			print_success "$resource_type/$resource_name is ready"
-			return 0
-		else
-			print_warning "$resource_type/$resource_name wait timeout, continuing to next step"
-			return 1
-		fi
-	fi
-}
-
-# Wait for UnitSet readiness (readyUnits equals units)
-wait_for_unitset() {
-	local unitset_name="$1"
-	local namespace="$2"
-	local timeout="${3:-300}"
-
-	local start_time=$(date +%s)
-	local end_time=$((start_time + timeout))
-
-	while [[ $(date +%s) -lt $end_time ]]; do
-		# Get UnitSet status information
-		local status_json
-		status_json=$(kubectl get unitset "$unitset_name" -n "$namespace" -o jsonpath='{.status}' 2>/dev/null)
-
-		if [[ -n "$status_json" ]]; then
-			# Extract units and readyUnits count
-			local units
-			local ready_units
-			units=$(echo "$status_json" | jq -r '.units // 0' 2>/dev/null || echo "0")
-			ready_units=$(echo "$status_json" | jq -r '.readyUnits // 0' 2>/dev/null || echo "0")
-
-			# Check if readyUnits equals units and both are greater than 0
-			if [[ "$units" -gt 0 && "$ready_units" -eq "$units" ]]; then
-				print_success "unitset/$unitset_name is ready (readyUnits: $ready_units/$units)"
-				return 0
-			fi
-
-			# Show current status
-			print_info "unitset/$unitset_name status: readyUnits: $ready_units/$units"
-		fi
-
-		sleep 5
-	done
-
-	print_warning "unitset/$unitset_name wait timeout, continuing to next step"
-	return 1
-}
-
-# Wait for MysqlGroupReplication readiness (status.ready equals true)
-wait_for_mysql_group_replication() {
-	local mgr_name="$1"
-	local namespace="$2"
-	local timeout="${3:-600}"  # Default 10 minutes timeout
-	local check_interval="${4:-8}"  # Default 8 seconds check interval
-
-	print_info "Waiting for MysqlGroupReplication $mgr_name to be ready..."
-	print_info "Timeout: ${timeout}s, Check interval: ${check_interval}s"
-
-	local start_time=$(date +%s)
-	local end_time=$((start_time + timeout))
-	local check_count=0
-
-	while [[ $(date +%s) -lt $end_time ]]; do
-		check_count=$((check_count + 1))
-		local current_time=$(date +%s)
-		local elapsed_time=$((current_time - start_time))
-
-		# Get MysqlGroupReplication status information
-		local status_ready
-		status_ready=$(kubectl get mysqlgroupreplication "$mgr_name" -n "$namespace" -o jsonpath='{.status.ready}' 2>/dev/null)
-
-		if [[ "$status_ready" == "true" ]]; then
-			print_success "MysqlGroupReplication $mgr_name is ready (status.ready: true)"
-			print_info "Ready after ${elapsed_time}s (${check_count} checks)"
-			return 0
-		fi
-
-		# Show current status with progress indicator
-		local progress_dots=""
-		local dot_count=$((check_count % 4))
-		for ((i=0; i<dot_count; i++)); do
-			progress_dots+="."
-		done
-
-		if [[ -n "$status_ready" ]]; then
-			print_info "MysqlGroupReplication $mgr_name status: ready=$status_ready (${elapsed_time}s elapsed)$progress_dots"
-		else
-			print_info "MysqlGroupReplication $mgr_name status: checking... (${elapsed_time}s elapsed)$progress_dots"
-		fi
-
-		# Check if resource exists
-		if ! kubectl get mysqlgroupreplication "$mgr_name" -n "$namespace" &>/dev/null; then
-			print_error "MysqlGroupReplication $mgr_name not found in namespace $namespace"
-			return 1
-		fi
-
-		sleep "$check_interval"
-	done
-
-	print_warning "MysqlGroupReplication $mgr_name wait timeout after ${timeout}s"
-	print_info "Final status check..."
-	
-	# Final status check and detailed error information
-	local final_status
-	final_status=$(kubectl get mysqlgroupreplication "$mgr_name" -n "$namespace" -o jsonpath='{.status}' 2>/dev/null)
-	if [[ -n "$final_status" ]]; then
-		print_info "Final status: $final_status"
-	fi
-	
-	# Show resource description for troubleshooting
-	print_info "Resource description for troubleshooting:"
-	kubectl describe mysqlgroupreplication "$mgr_name" -n "$namespace" 2>/dev/null || true
-	
-	return 1
-}
-
-# Check Job status
-wait_for_job() {
-	local job_name="$1"
-	local namespace="$2"
-	local timeout="${3:-300}"
-
-	print_info "Waiting for Job $job_name to complete..."
-
-	if kubectl wait --for=condition=Complete "job/$job_name" -n "$namespace" --timeout="${timeout}s" 2>/dev/null; then
-		print_success "Job $job_name executed successfully"
+	if [[ "$DRY_RUN" == "true" ]]; then
+		print_info "DRY RUN: Would wait for $resource_type/$resource_name to be ready"
 		return 0
-	else
-		print_warning "Job $job_name execution timeout or failed"
-		kubectl describe job "$job_name" -n "$namespace" || true
+	fi
+
+	print_info "Waiting for $resource_type/$resource_name to be ready (timeout: ${timeout}s)..."
+
+	local start_time
+	start_time=$(date +%s)
+
+	while true; do
+		local current_time
+		current_time=$(date +%s)
+		local elapsed=$((current_time - start_time))
+
+		if [[ $elapsed -ge $timeout ]]; then
+			print_error "Timeout waiting for $resource_type/$resource_name to be ready"
+			return 1
+		fi
+
+		case "$resource_type" in
+			"job")
+				local status
+				status=$(kubectl get job "$resource_name" -n "$namespace" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "")
+				if [[ "$status" == "True" ]]; then
+					print_success "Job $resource_name completed successfully"
+					return 0
+				fi
+				
+				# Check for failed status
+				local failed_status
+				failed_status=$(kubectl get job "$resource_name" -n "$namespace" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
+				if [[ "$failed_status" == "True" ]]; then
+					print_error "Job $resource_name failed"
+					return 1
+				fi
+				;;
+			"unitset")
+				# Check if resource exists
+				if ! kubectl get unitset "$resource_name" -n "$namespace" >/dev/null 2>&1; then
+					print_info "UnitSet $resource_name does not exist yet, waiting..." >&2
+					continue
+				fi
+				
+				local ready_units total_units
+				ready_units=$(kubectl get unitset "$resource_name" -n "$namespace" -o json 2>/dev/null | jq -r '.status.readyUnits // 0')
+				total_units=$(kubectl get unitset "$resource_name" -n "$namespace" -o json 2>/dev/null | jq -r '.spec.units // 0')
+				
+				# Handle empty values
+				if [[ -z "$ready_units" ]]; then
+					ready_units=0
+				fi
+				if [[ -z "$total_units" ]]; then
+					total_units=0
+				fi
+				
+				print_info "UnitSet $resource_name status: ready=$ready_units, desired=$total_units" >&2
+				
+				# Check if all units are ready
+				if [[ "$ready_units" -gt 0 && "$total_units" -gt 0 && "$ready_units" -eq "$total_units" ]]; then
+					print_success "UnitSet $resource_name is ready"
+					return 0
+				fi
+				;;
+			"mysqlgroupreplication")
+				local ready
+				ready=$(kubectl get mysqlgroupreplication "$resource_name" -n "$namespace" -o jsonpath='{.status.ready}' 2>/dev/null || echo "")
+				if [[ "$ready" == "true" ]]; then
+					print_success "MysqlGroupReplication $resource_name is ready"
+					return 0
+				fi
+				;;
+			*)
+				print_error "Unknown resource type: $resource_type"
+				return 1
+				;;
+		esac
+
+		print_info "Still waiting... (${elapsed}s elapsed)"
+		sleep 10
+	done
+}
+
+# Deploy individual step with detailed logging
+deploy_step() {
+	local step_num="$1"
+	local step_name="$2"
+	local yaml_file="$3"
+	local resource_type="$4"
+	local resource_name="$5"
+	local timeout="$6"
+	local show_replacements="${7:-false}"
+
+	print_info "========================================"
+	print_info "Step $step_num: $step_name"
+	print_info "========================================"
+
+	# Show replacement content if requested
+	if [[ "$show_replacements" == "true" ]]; then
+		print_info "Placeholder replacement content:"
+		print_info "  <namespace> → $NAMESPACE"
+		print_info "  <nodeport-ip> → $NODEPORT_IP"
+		print_info "  <storageClass-name> → $STORAGE_CLASS"
+		print_info "  <version> → $MYSQL_VERSION"
+		print_info "  <mysql-name-suffix> → $MYSQL_NAME_SUFFIX"
+		print_info "  <router-name-suffix> → $ROUTER_NAME_SUFFIX"
+	fi
+
+	# Apply YAML file
+	print_info "Applying $yaml_file..."
+	if ! apply_yaml_file "$yaml_file"; then
+		print_error "Step $step_num failed: Unable to apply $yaml_file"
 		return 1
 	fi
+
+	# Wait for resource if specified
+	if [[ -n "$resource_type" && -n "$resource_name" ]]; then
+		print_info "Waiting for resource to be ready: $resource_type/$resource_name"
+		if ! wait_for_resource "$resource_type" "$resource_name" "$NAMESPACE" "$timeout"; then
+			print_error "Step $step_num failed: Resource $resource_type/$resource_name not ready"
+			return 1
+		fi
+	fi
+
+	print_success "Step $step_num completed successfully: $step_name"
+	echo
 }
 
 # Deploy InnoDB Cluster
 deploy_innodb_cluster() {
-	if [[ "$DRY_RUN" == "true" ]]; then
-		print_info "[DRY-RUN] Displaying InnoDB Cluster configuration file content..."
-	else
-		print_info "Starting InnoDB Cluster deployment..."
-	fi
+	print_info "Starting InnoDB Cluster deployment..."
+	print_info "Deployment order: Project → Secret → MySQL UnitSet → MySQL Group Replication → MySQL Router"
 	echo
 
-	# 1. Apply gen-secret.yaml
-	apply_yaml_file "gen-secret.yaml"
-	if [[ "$DRY_RUN" != "true" ]]; then
-		wait_for_job "generate-innodb-cluster-secret-job" "$NAMESPACE" 180
-	fi
-	echo
-
-	# 2. Apply mysql-us.yaml
-	apply_yaml_file "mysql-us.yaml"
-	if [[ "$DRY_RUN" != "true" ]]; then
-		sleep 10
-		wait_for_resource "unitset" "demo-mysql-${mysql_random_id}" "$NAMESPACE" 600
-	fi
-	echo
-
-	# 3. Apply mysql-group-replication.yaml
-	apply_yaml_file "mysql-group-replication.yaml"
-	if [[ "$DRY_RUN" != "true" ]]; then
-		sleep 5
-		# Wait for MysqlGroupReplication to be ready
-		wait_for_mysql_group_replication "demo-mysql-${mysql_random_id}-replication" "$NAMESPACE" 600 8
-	fi
-	echo
-
-	# 4. Apply mysql-router-us.yaml
-	apply_yaml_file "mysql-router-us.yaml"
-	if [[ "$DRY_RUN" != "true" ]]; then
-		sleep 10
-		wait_for_resource "unitset" "demo-mysql-router-${router_random_id}" "$NAMESPACE" 300
-	fi
-	echo
-
-	if [[ "$DRY_RUN" == "true" ]]; then
-		print_success "[DRY-RUN] YAML configuration file content display completed!"
-	else
-		print_success "InnoDB Cluster deployment completed!"
-	fi
-}
-
-# Show deployment status
-show_deployment_status() {
-	print_info "Deployment status check..."
-	echo
-
-	print_info "UnitSet status:"
-	kubectl get unitset -n "$NAMESPACE" -o wide || true
-	echo
-
-	print_info "Pod status:"
-	kubectl get pods -n "$NAMESPACE" -l "upm.api/service-group.name=demo" || true
-	echo
-
-	print_info "Service status:"
-	kubectl get svc -n "$NAMESPACE" -l "upm.api/service-group.name=demo" || true
-	echo
-
-	print_info "Secret status:"
-	kubectl get secret -n "$NAMESPACE" "innodb-cluster-sg-demo-secret" || true
-	echo
-
-	# Get NodePort information - use correct selector to find mysql-router service
-	local nodeport_svc
-	nodeport_svc=$(kubectl get svc -n "$NAMESPACE" -l "unitset.name" --no-headers 2>/dev/null | grep "mysql-router" | grep "NodePort" | awk '{print $1}' | head -1 || echo "")
-
-	if [[ -n "$nodeport_svc" ]]; then
-		local nodeport
-		nodeport=$(kubectl get svc "$nodeport_svc" -n "$NAMESPACE" -o yaml 2>/dev/null | grep "nodePort:" | head -1 | awk '{print $2}' || echo "")
-
-		if [[ -n "$nodeport" ]]; then
-			print_success "InnoDB Cluster access information:"
-			echo "  - NodePort IP: $NODEPORT_IP"
-			echo "  - NodePort port: $nodeport"
-			echo "  - Connection address: $NODEPORT_IP:$nodeport"
-		fi
-	fi
-}
-
-# Show usage information
-show_usage_info() {
-	# Get NodePort port number - use correct selector to find mysql-router service
-	local nodeport_svc
-	nodeport_svc=$(kubectl get svc -n "$NAMESPACE" -l "unitset.name" --no-headers 2>/dev/null | grep "mysql-router" | grep "NodePort" | awk '{print $1}' | head -1 || echo "")
-
-	local nodeport="<NodePort Port>"
-	if [[ -n "$nodeport_svc" ]]; then
-		local actual_nodeport
-		actual_nodeport=$(kubectl get svc "$nodeport_svc" -n "$NAMESPACE" -o yaml 2>/dev/null | grep "nodePort:" | head -1 | awk '{print $2}' || echo "")
-		if [[ -n "$actual_nodeport" ]]; then
-			nodeport="$actual_nodeport"
-		fi
+	# Step 0: Create Project
+	if ! deploy_step "0" "Create Project" "0-project.yaml" "" "" "" "true"; then
+		return 1
 	fi
 
-	# Get MySQL password dynamically from gen-secret.yaml
-	local mysql_password="mypassword123"  # fallback default
-	
-	# Try to read password from gen-secret.yaml in current directory first, then example directory
-	local gen_secret_file=""
-	if [[ -f "gen-secret.yaml" ]]; then
-		gen_secret_file="gen-secret.yaml"
-	elif [[ -f "example/gen-secret.yaml" ]]; then
-		gen_secret_file="example/gen-secret.yaml"
-	fi
-	
-	if [[ -n "$gen_secret_file" ]]; then
-		# Extract the first password from SECRET_VALUES line
-		local extracted_password
-		extracted_password=$(grep -A 1 "SECRET_VALUES" "$gen_secret_file" 2>/dev/null | grep "value:" | sed -n 's/.*value: "\([^,]*\).*/\1/p' || echo "")
-		if [[ -n "$extracted_password" ]]; then
-			mysql_password="$extracted_password"
-		fi
+	# Step 1: Generate Secret
+	if ! deploy_step "1" "Generate Secret" "1-gen-secret.yaml" "job" "generate-innodb-cluster-secret-job" "120" "true"; then
+		return 1
 	fi
 
+	# Step 2: Deploy MySQL UnitSet
+	if ! deploy_step "2" "Deploy MySQL UnitSet" "2-mysql-us.yaml" "unitset" "demo-mysql-$MYSQL_NAME_SUFFIX" "300" "true"; then
+		return 1
+	fi
+
+	# Step 3: Deploy MySQL Group Replication
+	if ! deploy_step "3" "Create MySQL Group Replication" "3-mysql-group-replication.yaml" "mysqlgroupreplication" "demo-mysql-$MYSQL_NAME_SUFFIX-replication" "180" "true"; then
+		return 1
+	fi
+
+	# Step 4: Deploy MySQL Router
+	if ! deploy_step "4" "Deploy MySQL Router" "4-mysql-router-us.yaml" "unitset" "demo-mysql-router-$ROUTER_NAME_SUFFIX" "300" "true"; then
+		return 1
+	fi
+
+	# Deployment summary
+	print_info "========================================"
+	print_success "InnoDB Cluster deployment completed!"
+	print_info "========================================"
+	print_info "Deployment summary:"
+	print_info "  - Namespace: $NAMESPACE"
+	print_info "  - MySQL UnitSet: demo-mysql-$MYSQL_NAME_SUFFIX"
+	print_info "  - MySQL Router UnitSet: demo-mysql-router-$ROUTER_NAME_SUFFIX"
+	print_info "  - Storage class: $STORAGE_CLASS"
+	print_info "  - MySQL version: $MYSQL_VERSION"
+	print_info "  - NodePort IP: $NODEPORT_IP"
 	echo
-	print_info "Usage Instructions:"
-	echo "1. Connect to InnoDB Cluster using MySQL client:"
-	echo "   mysql -h $NODEPORT_IP -P $nodeport -u radminuser -p"
-	echo "   Password: $mysql_password"
-	echo
-	echo "2. View cluster status:"
-	echo "   kubectl get unitset -n $NAMESPACE"
-	echo "   kubectl get pods -n $NAMESPACE"
-	echo
-	echo "3. Verify deployment - Use MySQL database verification script for comprehensive check:"
-	echo "   The verify-mysql.sh script is an independent MySQL database verification tool designed"
-	echo "   to validate MySQL services deployed by deploy-innodb-cluster.sh with DBA-level output"
-	echo
-	echo "   Download and run verification script:"
-	echo "   curl -sSL https://raw.githubusercontent.com/upmio/demo/main/innodb-cluster/verify-mysql.sh -o verify-mysql.sh"
-	echo "   chmod +x verify-mysql.sh"
-	echo
-	echo "   # Run verification script:"
-	echo "   ./verify-mysql.sh -h $NODEPORT_IP -P $nodeport -u radminuser -p $mysql_password -r /tmp/mysql-verification-report.txt"
-	echo "   View verification script help:"
-	echo "   ./verify-mysql.sh --help"
-	echo
+
+	# Display connection information
+	display_connection_info
 }
 
 # Main function
@@ -1169,65 +1080,114 @@ main() {
 	# Parse command line arguments
 	parse_arguments "$@"
 
-	# Show help information
+	# Show help if requested
 	if [[ "$SHOW_HELP" == "true" ]]; then
 		show_help
 		exit 0
 	fi
 
-	echo "======================================"
-	if [[ "$DRY_RUN" == "true" ]]; then
-		echo "    InnoDB Cluster Configuration Preview (DRY-RUN)"
-	else
-		echo "    InnoDB Cluster Automated Deployment Script"
-	fi
-	echo "======================================"
-	echo
-
-	# Check dependencies and files
-	if [[ "$DRY_RUN" != "true" ]]; then
-		check_dependencies
-	fi
-	check_yaml_files
+	# Check dependencies
+	check_dependencies
 
 	# Auto-detect NodePort IP
 	auto_detect_nodeport_ip
 
-	# Get user input
+	# Get user input for missing parameters
 	get_user_input
 
-	# Install UPM package components after getting user input (only in non-dry-run mode)
+	# Install UPM packages (only in non-dry-run mode)
 	if [[ "$DRY_RUN" != "true" ]]; then
 		install_upm_packages "$MYSQL_VERSION"
 	fi
 
-	# Skip confirmation for automated deployment
-
-	echo
-	if [[ "$DRY_RUN" == "true" ]]; then
-		print_info "Starting to generate and display YAML configuration..."
-	else
-		print_info "Starting deployment..."
-	fi
-
-	# Prepare and deploy
+	# Prepare YAML files
 	prepare_yaml_files
-	replace_yaml_parameters
+
+	# Validate YAML files
+	validate_yaml_files
+
+	# Replace placeholders
+	replace_placeholders
+
+	# Deploy InnoDB Cluster
 	deploy_innodb_cluster
 
-	# Show status (only in non-dry-run mode)
-	if [[ "$DRY_RUN" != "true" ]]; then
-		show_deployment_status
-		show_usage_info
-		print_success "InnoDB Cluster deployment script execution completed!"
-	else
-		print_success "YAML configuration file preview completed!"
-		echo
-		print_info "Tip: Remove --dry-run parameter to execute actual deployment"
-	fi
+	print_success "InnoDB Cluster deployment script completed!"
 }
 
-# Script entry point
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-	main "$@"
-fi
+# Display connection information after deployment
+display_connection_info() {
+	print_info "========================================"
+	print_success "Connection Information"
+	print_info "========================================"
+	
+	# Get NodePort services information
+	local mysql_port mysqlx_port
+	# Get MySQL protocol port (6446) and MySQLX protocol port (6447) from the single router service
+	mysql_port=$(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[?(@.metadata.name=="demo-mysql-router-'"$ROUTER_NAME_SUFFIX"'-svc")].spec.ports[?(@.port==6446)].nodePort}' 2>/dev/null || echo "")
+	mysqlx_port=$(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[?(@.metadata.name=="demo-mysql-router-'"$ROUTER_NAME_SUFFIX"'-svc")].spec.ports[?(@.port==6447)].nodePort}' 2>/dev/null || echo "")
+	
+	if [[ -z "$mysql_port" || -z "$mysqlx_port" ]]; then
+		print_warning "Unable to retrieve NodePort information automatically"
+		print_info "Please check NodePort services manually:"
+		print_info "  kubectl get svc -n $NAMESPACE | grep router"
+		echo
+	fi
+	
+	print_info "MySQL InnoDB Cluster Access Information:"
+	echo
+	
+	print_info "📋 Database Connection Details:"
+	print_info "  • Host: $NODEPORT_IP"
+	print_info "  • Username: radminuser"
+	print_info "  • Password: mypassword123"
+	echo
+	
+	if [[ -n "$mysql_port" && -n "$mysqlx_port" ]]; then
+		print_info "🔌 NodePort Services:"
+		print_info "  • MySQL Protocol Port (6446):  $mysql_port  (read/write capable)"
+		print_info "  • MySQLX Protocol Port (6447): $mysqlx_port  (X Protocol)"
+		echo
+		
+		print_info "💻 Connection Commands:"
+		print_info "  # Connect via MySQL protocol (standard connection)"
+		print_info "  mysql -h $NODEPORT_IP -P $mysql_port -u radminuser -pmypassword123"
+		echo
+		print_info "  # Connect via MySQLX protocol (X Protocol)"
+		print_info "  mysqlsh --uri radminuser:mypassword123@$NODEPORT_IP:$mysqlx_port"
+		echo
+	else
+		print_info "🔌 NodePort Services:"
+		print_info "  Please check services manually: kubectl get svc -n $NAMESPACE"
+		echo
+	fi
+	
+	print_info "🧪 Verification Script:"
+	print_info "  # Test MySQL protocol port connection and cluster status"
+	if [[ -n "$mysql_port" ]]; then
+		print_info "  ./verify-mysql.sh -h $NODEPORT_IP -P $mysql_port -u radminuser -p mypassword123 -v"
+	else
+		print_info "  ./verify-mysql.sh -h $NODEPORT_IP -P <MYSQL_PORT> -u radminuser -p mypassword123 -v"
+	fi
+	
+	print_info "📚 Additional Commands:"
+	print_info "  # Check cluster status"
+	print_info "  kubectl get pods,svc,pvc -n $NAMESPACE -l upm.api/service-group.name=demo"
+	echo
+	print_info "  # View MySQL Router logs"
+	print_info "  kubectl logs -n $NAMESPACE -l app=demo-mysql-router-$ROUTER_NAME_SUFFIX"
+	echo
+	print_info "  # View MySQL logs"
+	print_info "  kubectl logs -n $NAMESPACE -l app=demo-mysql-$MYSQL_NAME_SUFFIX"
+	echo
+	
+	print_success "🎉 Your MySQL InnoDB Cluster is ready for use!"
+	print_info "========================================"
+}
+
+# Global variables for generated identifiers
+MYSQL_NAME_SUFFIX=""
+ROUTER_NAME_SUFFIX=""
+
+# Run main function
+main "$@"

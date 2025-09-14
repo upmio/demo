@@ -4,7 +4,6 @@ metadata:
   labels:
     upm.api/service-group.name: demo
     upm.api/service.name: demo-mysql-<mysql-name-suffix>
-    upm.io/owner: upm
   name: demo-mysql-<mysql-name-suffix>-replication
   namespace: <namespace>
 spec:

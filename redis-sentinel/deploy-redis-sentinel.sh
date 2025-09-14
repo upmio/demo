@@ -1213,9 +1213,9 @@ deploy_redis_sentinel() {
 		# Show NodePort information if available
 		local redis_service_name="demo-redis-$REDIS_NAME_SUFFIX"
 		local unit_0_nodeport unit_1_nodeport unit_2_nodeport
-		unit_0_nodeport=$(kubectl get service "$redis_service_name-0" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "N/A")
-		unit_1_nodeport=$(kubectl get service "$redis_service_name-1" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "N/A")
-		unit_2_nodeport=$(kubectl get service "$redis_service_name-2" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "N/A")
+		unit_0_nodeport=$(kubectl get service "$redis_service_name-0-svc" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "N/A")
+		unit_1_nodeport=$(kubectl get service "$redis_service_name-1-svc" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "N/A")
+		unit_2_nodeport=$(kubectl get service "$redis_service_name-2-svc" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "N/A")
 		print_info "  <unit-0_nodeport> → $unit_0_nodeport"
 		print_info "  <unit-1_nodeport> → $unit_1_nodeport"
 		print_info "  <unit-2_nodeport> → $unit_2_nodeport"
@@ -1295,7 +1295,89 @@ main() {
 	# Deploy Redis Sentinel cluster
 	deploy_redis_sentinel
 
+	# Display connection information
+	display_connection_info
+
 	print_success "Redis Sentinel deployment script completed!"
+}
+
+# Display connection information after deployment
+display_connection_info() {
+	print_info "========================================"
+	print_success "Connection Information"
+	print_info "========================================"
+	
+	# Get NodePort services information
+	local redis_port sentinel_port
+	# Get Redis port (6379) and Sentinel port (26379) from services
+	redis_port=$(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[?(@.metadata.name=="demo-redis-'"$REDIS_NAME_SUFFIX"'-svc")].spec.ports[?(@.port==6379)].nodePort}' 2>/dev/null || echo "")
+	sentinel_port=$(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[?(@.metadata.name=="demo-redis-sentinel-'"$SENTINEL_NAME_SUFFIX"'-svc")].spec.ports[?(@.port==26379)].nodePort}' 2>/dev/null || echo "")
+	
+	if [[ -z "$redis_port" || -z "$sentinel_port" ]]; then
+		print_warning "Unable to retrieve NodePort information automatically"
+		print_info "Please check NodePort services manually:"
+		print_info "  kubectl get svc -n $NAMESPACE | grep redis"
+		echo
+	fi
+	
+	print_info "Redis Sentinel Cluster Access Information:"
+	echo
+	
+	print_info "📋 Database Connection Details:"
+	print_info "  • Host: $NODEPORT_IP"
+	print_info "  • Redis Password: mypassword123"
+	print_info "  • Sentinel Password: mypassword123"
+	echo
+	
+	if [[ -n "$redis_port" && -n "$sentinel_port" ]]; then
+		print_info "🔌 NodePort Services:"
+		print_info "  • Redis Port (6379):     $redis_port  (data access)"
+		print_info "  • Sentinel Port (26379): $sentinel_port  (monitoring & failover)"
+		echo
+		
+		print_info "💻 Connection Commands:"
+		print_info "  # Connect to Redis (data operations)"
+		print_info "  redis-cli -h $NODEPORT_IP -p $redis_port -a mypassword123"
+		echo
+		print_info "  # Connect to Redis Sentinel (monitoring)"
+		print_info "  redis-cli -h $NODEPORT_IP -p $sentinel_port -a mypassword123"
+		echo
+	else
+		print_info "🔌 NodePort Services:"
+		print_info "  Please check services manually: kubectl get svc -n $NAMESPACE"
+		echo
+	fi
+	
+	print_info "🧪 Verification Commands:"
+	if [[ -n "$redis_port" && -n "$sentinel_port" ]]; then
+		print_info "  # Test Redis connection and basic operations"
+		print_info "  redis-cli -h $NODEPORT_IP -p $redis_port -a mypassword123 ping"
+		echo
+		print_info "  # Check Sentinel status and master info"
+		print_info "  redis-cli -h $NODEPORT_IP -p $sentinel_port -a mypassword123 sentinel masters"
+		echo
+	else
+		print_info "  # Test Redis connection (replace <REDIS_PORT> with actual port)"
+		print_info "  redis-cli -h $NODEPORT_IP -p <REDIS_PORT> -a mypassword123 ping"
+		echo
+		print_info "  # Check Sentinel status (replace <SENTINEL_PORT> with actual port)"
+		print_info "  redis-cli -h $NODEPORT_IP -p <SENTINEL_PORT> -a mypassword123 sentinel masters"
+		echo
+	fi
+	
+	print_info "📚 Additional Commands:"
+	print_info "  # Check cluster status"
+	print_info "  kubectl get pods,svc,pvc -n $NAMESPACE -l upm.api/service-group.name=demo"
+	echo
+	print_info "  # View Redis logs"
+	print_info "  kubectl logs -n $NAMESPACE -l app=demo-redis-$REDIS_NAME_SUFFIX"
+	echo
+	print_info "  # View Sentinel logs"
+	print_info "  kubectl logs -n $NAMESPACE -l app=demo-redis-sentinel-$SENTINEL_NAME_SUFFIX"
+	echo
+	
+	print_success "🎉 Your Redis Sentinel Cluster is ready for use!"
+	print_info "========================================"
 }
 
 # Global variables for generated identifiers

@@ -301,12 +301,12 @@ install_upm_packages() {
 	
 	print_info "Installing UPM package components for MySQL version $mysql_version..."
 
-	local upm_script="${SCRIPT_DIR}/../upm-pkg-mgm.sh"
+	local upm_script="/tmp/upm-pkg-mgm.sh"
 
 	# If script doesn't exist, try to download
 	if [[ ! -f "$upm_script" ]]; then
 		print_info "UPM package management script not found, downloading..."
-		local download_dir="${SCRIPT_DIR}/.."
+		local download_dir="/tmp"
 
 		# Ensure download directory exists
 		mkdir -p "$download_dir"

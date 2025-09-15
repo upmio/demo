@@ -56,7 +56,7 @@ Watch the complete deployment and verification process in action:
 
 ![UPM Demo](upm-demo.gif)
 
-Video link: [https://asciinema.org/a/737567](https://asciinema.org/a/737567)
+Video link: [https://asciinema.org/a/740686](https://asciinema.org/a/740686)
 
 ### Prerequisites
 

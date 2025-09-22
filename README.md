@@ -1,4 +1,4 @@
-# 🚀 UPM Unified Management Platform
+# 🚀 UPM (Unified Management Platform)
 
 ## Enterprise-Grade Stateful Service Management Platform for Kubernetes
 

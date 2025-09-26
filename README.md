@@ -63,6 +63,7 @@ Video link: [https://asciinema.org/a/740686](https://asciinema.org/a/740686)
 - **Kubernetes Cluster** (v1.29+)
 - **Helm** (v3.16+)
 - **kubectl** command-line tool
+- **cert-manager** (v1.15.3+)
 - **Sufficient cluster resources** (recommended 4+ cores, 8GB+ memory, 2+ workload nodes)
 
 ### 🔧 Installation Steps
@@ -86,6 +87,8 @@ chmod +x install-operator.sh
 **Description:**
 
 The `deploy-innodb-cluster.sh` script is an automated deployment tool that sets up a production-ready MySQL InnoDB Cluster on Kubernetes. It creates a 3-node high-availability cluster with MySQL Router for load balancing, automatic failover capabilities, and persistent storage configuration.
+
+**Prerequisite:** At least one Kubernetes StorageClass must exist in the cluster.
 
 ```bash
 # Deploy MySQL InnoDB Cluster
@@ -116,6 +119,10 @@ chmod +x verify-mysql.sh
 - ✅ Data consistency guarantee
 - ✅ Online scaling
 - ✅ Automated backup and recovery
+
+### Redis Sentinel Cluster Automated Deployment
+
+Refer to [redis-sentinel/README.md](redis-sentinel/README.md).
 
 ## 📚 Documentation & Resources
 

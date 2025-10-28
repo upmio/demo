@@ -1,0 +1,4 @@
+apiVersion: upm.syntropycloud.io/v1alpha2
+kind: Project
+metadata:
+  name: <namespace>

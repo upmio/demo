@@ -1,0 +1,22 @@
+apiVersion: upm.syntropycloud.io/v1alpha1
+kind: MongoDBReplicaSet
+metadata:
+  labels:
+    upm.api/service-group.name: demo
+    upm.api/service.name: demo-mongodb-<mongodb-name-suffix>
+  name: demo-mongodb-<mongodb-name-suffix>-replicaset
+  namespace: <namespace>
+spec:
+  member:
+  - host: demo-mongodb-<mongodb-name-suffix>-0.demo-mongodb-<mongodb-name-suffix>-headless-svc.<namespace>
+    name: demo-mongodb-<mongodb-name-suffix>-0
+    port: 27017
+  - host: demo-mongodb-<mongodb-name-suffix>-1.demo-mongodb-<mongodb-name-suffix>-headless-svc.<namespace>
+    name: demo-mongodb-<mongodb-name-suffix>-1
+    port: 27017
+  - host: demo-mongodb-<mongodb-name-suffix>-2.demo-mongodb-<mongodb-name-suffix>-headless-svc.<namespace>
+    name: demo-mongodb-<mongodb-name-suffix>-2
+    port: 27017
+  secret:
+    mongod: admin
+    name: mongodb-replicaset-sg-demo-secret

@@ -1,0 +1,37 @@
+apiVersion: upm.syntropycloud.io/v1alpha2
+kind: UnitSet
+metadata:
+  labels:
+    upm.api/service-group.name: demo
+    upm.api/service.arch.mode: replicaset
+    upm.api/service.type: mongodb
+  name: demo-mongodb-<mongodb-name-suffix>
+  namespace: <namespace>
+spec:
+  type: mongodb
+  units: 3
+  version: <version>
+  env:
+  - name: ADM_USER
+    value: root
+  podMonitor:
+    enable: true
+  resources:
+    limits:
+      cpu: "1"
+      memory: 2Gi
+    requests:
+      cpu: "1"
+      memory: 2Gi
+  secret:
+    mountPath: /SECRET_MOUNT
+    name: mongodb-replicaset-sg-demo-secret
+  storages:
+  - mountPath: /DATA_MOUNT
+    name: data
+    size: 10Gi
+    storageClassName: <storageClass-name>
+  - mountPath: /LOG_MOUNT
+    name: log
+    size: 10Gi
+    storageClassName: <storageClass-name>
